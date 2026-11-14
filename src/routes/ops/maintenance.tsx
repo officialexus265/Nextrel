@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { toast } from "sonner";
-import { completeMaintenance, listMaintenance, listVehicles, saveMaintenance } from "@/lib/fleet/api";
+import { completeMaintenance, deleteMaintenance, listMaintenance, listVehicles, saveMaintenance } from "@/lib/fleet/api";
 import { PageHeader } from "@/components/layout/app-shell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -17,6 +17,7 @@ function MaintenancePage() {
   const q = useQuery({ queryKey: ["maintenance"], queryFn: () => listMaintenance() });
   const vehicles = useQuery({ queryKey: ["vehicles"], queryFn: () => listVehicles() });
   const [open, setOpen] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [vehicleId, setVehicleId] = useState("");
   const [title, setTitle] = useState("");
   const [dueOdometer, setDueOdometer] = useState("");
@@ -42,7 +43,7 @@ function MaintenancePage() {
         },
       }),
     onSuccess: () => {
-      toast.success("Reminder saved");
+      toast.success(editingId ? "Reminder updated" : "Reminder saved");
       setOpen(false);
       setTitle("");
       setDueOdometer("");
@@ -63,7 +64,7 @@ function MaintenancePage() {
             <DialogTrigger asChild>
               <Button size="sm">New reminder</Button>
             </DialogTrigger>
-            <DialogContent title="Service reminder">
+            <DialogContent title={editingId ? "Edit service reminder" : "Service reminder"}>
               <form
                 className="space-y-3"
                 onSubmit={(e) => {
@@ -137,9 +138,23 @@ function MaintenancePage() {
               <div className="flex items-center gap-2">
                 <Badge tone={m.status === "open" ? (overdue ? "down" : "idle") : "live"}>{overdue ? "due" : m.status}</Badge>
                 {m.status === "open" && (
-                  <Button size="sm" variant="secondary" onClick={() => mut.mutate(m.id)} disabled={mut.isPending}>
-                    Complete
-                  </Button>
+                  <>
+                    <Button size="sm" variant="secondary" onClick={() => mut.mutate(m.id)} disabled={mut.isPending}>
+                      Complete
+                    </Button>
+                    <Button size="sm" variant="ghost" onClick={() => {
+                      setEditingId(m.id);
+                      setVehicleId(m.vehicleId);
+                      setTitle(m.title);
+                      setDueOdometer(m.dueOdometer == null ? "" : String(m.dueOdometer));
+                      setDueDate(m.dueDate ? String(m.dueDate).slice(0, 10) : "");
+                      setNotes(m.notes ?? "");
+                      setOpen(true);
+                    }}>Edit</Button>
+                    <Button size="sm" variant="ghost" disabled={remove.isPending} onClick={() => {
+                      if (window.confirm(`Delete reminder "${m.title}"?`)) remove.mutate(m.id);
+                    }}>Delete</Button>
+                  </>
                 )}
               </div>
             </article>
