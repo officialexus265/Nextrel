@@ -64,7 +64,7 @@ export async function bootstrapSession(sql: Sql, userId: string): Promise<Sessio
       insert into audit_logs (id, company_id, actor_id, action, target)
       values (${nid("aud")}, ${companyId}, ${userId}, 'user.joined', ${role})
     `;
-    profile = { role, company_id: companyId, name: auth.name, email: auth.email };
+    profile = { role, company_id: companyId, name: auth.name, email: auth.email, active: true };
   }
 
   if (profile.role === "super_admin") {
