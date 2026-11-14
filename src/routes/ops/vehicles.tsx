@@ -2,7 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { toast } from "sonner";
-import { listVehicles, saveVehicle } from "@/lib/fleet/api";
+import { deleteVehicle, listVehicles, saveVehicle } from "@/lib/fleet/api";
 import { PageHeader } from "@/components/layout/app-shell";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/dialog";
@@ -15,15 +15,17 @@ function VehiclesPage() {
   const qc = useQueryClient();
   const q = useQuery({ queryKey: ["vehicles"], queryFn: () => listVehicles() });
   const [open, setOpen] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [plate, setPlate] = useState("");
   const [make, setMake] = useState("");
   const [model, setModel] = useState("");
   const mut = useMutation({
-    mutationFn: () => saveVehicle({ data: { name, plate, make, model } }),
+    mutationFn: () => saveVehicle({ data: { id: editingId ?? undefined, name, plate, make, model } }),
     onSuccess: () => {
-      toast.success("Vehicle saved");
+      toast.success(editingId ? "Vehicle updated" : "Vehicle saved");
       setOpen(false);
+      setEditingId(null);
       setName("");
       setPlate("");
       qc.invalidateQueries({ queryKey: ["vehicles"] });
@@ -41,7 +43,7 @@ function VehiclesPage() {
             <DialogTrigger asChild>
               <Button size="sm">Add vehicle</Button>
             </DialogTrigger>
-            <DialogContent title="New vehicle">
+            <DialogContent title={editingId ? "Edit vehicle" : "New vehicle"}>
               <form
                 className="space-y-3"
                 onSubmit={(e) => {
@@ -53,7 +55,7 @@ function VehiclesPage() {
                 <div className="space-y-1"><Label>Plate</Label><Input required value={plate} onChange={(e) => setPlate(e.target.value)} /></div>
                 <div className="space-y-1"><Label>Make</Label><Input value={make} onChange={(e) => setMake(e.target.value)} /></div>
                 <div className="space-y-1"><Label>Model</Label><Input value={model} onChange={(e) => setModel(e.target.value)} /></div>
-                <Button className="w-full" type="submit" disabled={mut.isPending}>Save</Button>
+                <Button className="w-full" type="submit" disabled={mut.isPending}>{editingId ? "Save changes" : "Save"}</Button>
               </form>
             </DialogContent>
           </Dialog>
@@ -63,7 +65,7 @@ function VehiclesPage() {
         <table className="w-full min-w-[800px] text-left text-sm">
           <thead className="text-xs uppercase tracking-[0.12em] text-subtle">
             <tr>
-              {["Unit", "Plate", "Vehicle", "Driver", "Odometer", "Hours", "IMEI", "Company"].map((h) => (
+              {["Unit", "Plate", "Vehicle", "Driver", "Odometer", "Hours", "IMEI", "Company", "Actions"].map((h) => (
                 <th key={h} className="px-2 py-2 font-medium">{h}</th>
               ))}
             </tr>
@@ -83,6 +85,21 @@ function VehiclesPage() {
                 <td className="tabular px-2 py-2">{Math.round(v.engine_hours)}</td>
                 <td className="px-2 py-2 font-mono text-xs text-muted">{v.imei ?? "Unassigned"}</td>
                 <td className="px-2 py-2 text-muted">{v.company_name}</td>
+                <td className="px-2 py-2">
+                  <div className="flex gap-1">
+                    <Button size="sm" variant="secondary" onClick={() => {
+                      setEditingId(v.id);
+                      setName(v.name);
+                      setPlate(v.plate);
+                      setMake(v.make ?? "");
+                      setModel(v.model ?? "");
+                      setOpen(true);
+                    }}>Edit</Button>
+                    <Button size="sm" variant="ghost" disabled={remove.isPending} onClick={() => {
+                      if (window.confirm(`Delete vehicle "${v.plate}"? Vehicles with operational history cannot be deleted.`)) remove.mutate(v.id);
+                    }}>Delete</Button>
+                  </div>
+                </td>
               </tr>
             ))}
           </tbody>
