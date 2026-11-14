@@ -35,7 +35,7 @@ export function LiveMap({ vehicles, geofences, selectedId, follow, fitNonce, onS
         zoomControl: true,
         attributionControl: true,
       }).setView([-1.286, 36.82], 12);
-      L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
+      L.tileLayer("https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png?key=cb1_58tw_1_1ac83981eb505a5d6d737364", {
         attribution: "&copy; OpenStreetMap &copy; CARTO",
         maxZoom: 19,
       }).addTo(map);
