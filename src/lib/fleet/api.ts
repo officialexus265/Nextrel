@@ -2013,6 +2013,7 @@ export const saveDocument = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .validator(
     z.object({
+      id: z.string().optional(),
       vehicleId: z.string(),
       title: z.string().min(2).max(120),
       kind: z.enum(["insurance", "registration", "permit", "service"]),
@@ -2023,22 +2024,33 @@ export const saveDocument = createServerFn({ method: "POST" })
     const { sql, session } = await ctx(context.userId);
     if (!["super_admin", "company_admin"].includes(session.role)) throw new Error("Forbidden");
     const scope = await companyScope(sql, session);
-    const vehicle = (
-      await sql<{ id: string; company_id: string; plate: string }>`
-        select id, company_id, plate from vehicles where id = ${data.vehicleId}
-      `
-    )[0];
+    const vehicle = (await sql<{ id: string; company_id: string; plate: string }>`select id, company_id, plate from vehicles where id = ${data.vehicleId}`)[0];
     if (!vehicle || !inScope(scope, vehicle.company_id)) throw new Error("Not found");
+    if (data.id) {
+      const current = (await sql<{ company_id: string; title: string }>`select company_id, title from documents where id = ${data.id}`)[0];
+      if (!current || !inScope(scope, current.company_id)) throw new Error("Document not found");
+      await sql`update documents set vehicle_id = ${vehicle.id}, company_id = ${vehicle.company_id}, title = ${data.title}, kind = ${data.kind}, expires_on = ${data.expiresOn ?? null} where id = ${data.id}`;
+      await sql`insert into audit_logs (id, company_id, actor_id, action, target) values (${nid("aud")}, ${vehicle.company_id}, ${session.userId}, 'document.updated', ${`${vehicle.plate} ${data.title}`})`;
+      return { id: data.id };
+    }
     const id = nid("doc");
-    await sql`
-      insert into documents (id, company_id, vehicle_id, title, kind, path, expires_on)
-      values (${id}, ${vehicle.company_id}, ${vehicle.id}, ${data.title}, ${data.kind}, ${"/media/document.svg"}, ${data.expiresOn ?? null})
-    `;
-    await sql`
-      insert into audit_logs (id, company_id, actor_id, action, target)
-      values (${nid("aud")}, ${vehicle.company_id}, ${session.userId}, 'document.filed', ${`${vehicle.plate} ${data.title}`})
-    `;
+    await sql`insert into documents (id, company_id, vehicle_id, title, kind, path, expires_on) values (${id}, ${vehicle.company_id}, ${vehicle.id}, ${data.title}, ${data.kind}, ${"/media/document.svg"}, ${data.expiresOn ?? null})`;
+    await sql`insert into audit_logs (id, company_id, actor_id, action, target) values (${nid("aud")}, ${vehicle.company_id}, ${session.userId}, 'document.filed', ${`${vehicle.plate} ${data.title}`})`;
     return { id };
+  });
+
+export const deleteDocument = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator(z.object({ id: z.string() }))
+  .handler(async ({ context, data }) => {
+    const { sql, session } = await ctx(context.userId);
+    if (!["super_admin", "company_admin"].includes(session.role)) throw new Error("Forbidden");
+    const scope = await companyScope(sql, session);
+    const row = (await sql<{ company_id: string; title: string }>`select company_id, title from documents where id = ${data.id}`)[0];
+    if (!row || !inScope(scope, row.company_id)) throw new Error("Document not found");
+    await sql`delete from documents where id = ${data.id}`;
+    await sql`insert into audit_logs (id, company_id, actor_id, action, target) values (${nid("aud")}, ${row.company_id}, ${session.userId}, 'document.deleted', ${row.title})`;
+    return { ok: true };
   });
 
 export const listMaintenance = createServerFn({ method: "GET" })
