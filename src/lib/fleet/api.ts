@@ -3091,6 +3091,7 @@ export const saveReportSchedule = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .validator(
     z.object({
+      id: z.string().optional(),
       companyId: z.string(),
       kind: z.enum(["trips", "fuel", "offline", "speeding", "stops"]),
       cadence: z.enum(["daily", "weekly"]),
@@ -3104,16 +3105,20 @@ export const saveReportSchedule = createServerFn({ method: "POST" })
     if (!inScope(scope, data.companyId)) throw new Error("Forbidden");
     const company = (await sql<{ id: string }>`select id from companies where id = ${data.companyId}`)[0];
     if (!company) throw new Error("Company not found");
-    const id = nid("sch");
     const next = new Date(Date.now() + (data.cadence === "weekly" ? 7 : 1) * 86400000).toISOString();
+    if (data.id) {
+      const current = (await sql<{ company_id: string }>`select company_id from report_schedules where id = ${data.id}`)[0];
+      if (!current || !inScope(scope, current.company_id)) throw new Error("Schedule not found");
+      await sql`update report_schedules set company_id = ${data.companyId}, kind = ${data.kind}, cadence = ${data.cadence}, recipient = ${data.recipient}, next_run = ${next} where id = ${data.id}`;
+      await sql`insert into audit_logs (id, company_id, actor_id, action, target) values (${nid("aud")}, ${data.companyId}, ${session.userId}, 'report_schedule.updated', ${`${data.cadence} ${data.kind} ${data.recipient}`})`;
+      return { id: data.id };
+    }
+    const id = nid("sch");
     await sql`
       insert into report_schedules (id, company_id, kind, cadence, recipient, enabled, next_run, created_by)
       values (${id}, ${data.companyId}, ${data.kind}, ${data.cadence}, ${data.recipient}, true, ${next}, ${session.userId})
     `;
-    await sql`
-      insert into audit_logs (id, company_id, actor_id, action, target)
-      values (${nid("aud")}, ${data.companyId}, ${session.userId}, 'report.scheduled', ${`${data.cadence} ${data.kind}`})
-    `;
+    await sql`insert into audit_logs (id, company_id, actor_id, action, target) values (${nid("aud")}, ${data.companyId}, ${session.userId}, 'report.scheduled', ${`${data.cadence} ${data.kind}`})`;
     return { id };
   });
 
