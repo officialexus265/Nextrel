@@ -23,10 +23,10 @@ function VehiclesPage() {
   const [model, setModel] = useState("");
   const [companyId, setCompanyId] = useState("");
   const [search, setSearch] = useState("");
-  const normalizedSearch = search.toLowerCase().replace(/[\\s-]/g, "");
+  const normalizedSearch = search.toLowerCase().replace(/[\s-]/g, "");
   const filteredVehicles = (q.data ?? []).filter((v) =>
     [v.plate, v.name, v.imei ?? "", v.make ?? "", v.model ?? ""].some((value) =>
-      value.toLowerCase().replace(/[\\s-]/g, "").includes(normalizedSearch),
+      value.toLowerCase().replace(/[\s-]/g, "").includes(normalizedSearch),
     ),
   );
   const remove = useMutation({
@@ -87,7 +87,12 @@ function VehiclesPage() {
           </Dialog>
         }
       />
-      <div className="space-y-3 px-4 pb-10 md:px-6">\n        <div className="relative max-w-md">\n          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-subtle" />\n          <Input className="pl-9" placeholder="Search by vehicle plate, IMEI or name (e.g. GV 454)" value={search} onChange={(e) => setSearch(e.target.value)} />\n        </div>\n        <div className="overflow-x-auto">
+      <div className="space-y-3 px-4 pb-10 md:px-6">
+        <div className="relative max-w-md">
+          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-subtle" />
+          <Input className="pl-9" placeholder="Search by vehicle plate, IMEI or name (e.g. GV 454)" value={search} onChange={(e) => setSearch(e.target.value)} />
+        </div>
+        <div className="overflow-x-auto">
         <table className="w-full min-w-[800px] text-left text-sm">
           <thead className="text-xs uppercase tracking-[0.12em] text-subtle">
             <tr>
@@ -131,6 +136,8 @@ function VehiclesPage() {
             ))}
           </tbody>
         </table>
+        {filteredVehicles.length === 0 && <p className="px-3 py-6 text-sm text-muted">{search ? "No vehicles match that search." : "No vehicles registered yet."}</p>}
+        </div>
       </div>
     </div>
   );
