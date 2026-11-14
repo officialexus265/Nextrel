@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { GeofenceRow, LiveVehicle } from "@/lib/fleet/types";
+import type { GeofenceRow, LiveVehicle, MapCenter } from "@/lib/fleet/types";
 import { movementColor } from "@/components/fleet/status";
 
 type Props = {
@@ -8,11 +8,12 @@ type Props = {
   selectedId: string | null;
   follow: boolean;
   fitNonce: number;
+  mapCenter: MapCenter;
   onSelect: (id: string) => void;
   className?: string;
 };
 
-export function LiveMap({ vehicles, geofences, selectedId, follow, fitNonce, onSelect, className }: Props) {
+export function LiveMap({ vehicles, geofences, selectedId, follow, fitNonce, mapCenter, onSelect, className }: Props) {
   const hostRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<import("leaflet").Map | null>(null);
   const markersRef = useRef<Map<string, import("leaflet").Marker>>(new Map());
@@ -23,6 +24,8 @@ export function LiveMap({ vehicles, geofences, selectedId, follow, fitNonce, onS
   const onSelectRef = useRef(onSelect);
   onSelectRef.current = onSelect;
   const [ready, setReady] = useState(false);
+  const [baseMap, setBaseMap] = useState<"street" | "voyager" | "satellite">("street");
+  const tileRef = useRef<import("leaflet").TileLayer | null>(null);
 
   useEffect(() => {
     if (!hostRef.current || mapRef.current) return;
@@ -31,14 +34,10 @@ export function LiveMap({ vehicles, geofences, selectedId, follow, fitNonce, onS
       const L = await import("leaflet");
       await import("leaflet/dist/leaflet.css");
       if (cancelled || !hostRef.current) return;
-      const map = L.map(hostRef.current, {
-        zoomControl: true,
-        attributionControl: true,
-      }).setView([-1.286, 36.82], 12);
-      L.tileLayer("https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png?key=cb1_58tw_1_1ac83981eb505a5d6d737364", {
-        attribution: "&copy; OpenStreetMap &copy; CARTO",
-        maxZoom: 19,
-      }).addTo(map);
+      const initialZoom = mapCenter.label === "Malawi" ? 6 : 12;
+      const map = L.map(hostRef.current, { zoomControl: false, attributionControl: true })
+        .setView([mapCenter.lat, mapCenter.lng], initialZoom);
+      tileRef.current = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { attribution: "&copy; OpenStreetMap contributors", maxZoom: 19 }).addTo(map);
       geoRef.current = L.layerGroup().addTo(map);
       mapRef.current = map;
       setReady(true);
@@ -50,9 +49,29 @@ export function LiveMap({ vehicles, geofences, selectedId, follow, fitNonce, onS
       mapRef.current = null;
       markersRef.current.clear();
       trailRef.current = null;
+      tileRef.current = null;
     };
   }, []);
 
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !ready) return;
+    map.setView([mapCenter.lat, mapCenter.lng], mapCenter.label === "Malawi" ? 6 : 12, { animate: false });
+  }, [mapCenter.lat, mapCenter.lng, mapCenter.label, ready]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !ready) return;
+    void import("leaflet").then((L) => {
+      tileRef.current?.remove();
+      const layers = {
+        street: L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { attribution: "&copy; OpenStreetMap contributors", maxZoom: 19 }),
+        voyager: L.tileLayer("https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png", { attribution: "&copy; OpenStreetMap &copy; CARTO", maxZoom: 20 }),
+        satellite: L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", { attribution: "Tiles &copy; Esri", maxZoom: 19 }),
+      };
+      tileRef.current = layers[baseMap].addTo(map);
+    });
+  }, [baseMap, ready]);
   useEffect(() => {
     const map = mapRef.current;
     const group = geoRef.current;
@@ -164,13 +183,6 @@ export function LiveMap({ vehicles, geofences, selectedId, follow, fitNonce, onS
     };
   }, [vehicles, selectedId, ready]);
 
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !ready || vehicles.length === 0) return;
-    if (fittedRef.current) return;
-    fittedRef.current = true;
-    void fitFleet(map, vehicles);
-  }, [vehicles, ready]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -185,7 +197,20 @@ export function LiveMap({ vehicles, geofences, selectedId, follow, fitNonce, onS
     mapRef.current.panTo([v.lat, v.lng], { animate: true });
   }, [selectedId, vehicles, follow]);
 
-  return <div ref={hostRef} className={className ?? "h-full w-full"} />;
+  return (
+    <div className="relative h-full w-full">
+      <div ref={hostRef} className={className ?? "h-full w-full"} />
+      <div className="absolute right-3 top-3 z-[700] flex flex-col gap-2">
+        <div className="overflow-hidden rounded-md border border-border bg-surface/95 shadow-md backdrop-blur">
+          <button type="button" aria-label="Zoom in" title="Zoom in" onClick={() => mapRef.current?.zoomIn()} className="grid size-9 place-items-center border-b border-border text-xl leading-none hover:bg-surface-2">+</button>
+          <button type="button" aria-label="Zoom out" title="Zoom out" onClick={() => mapRef.current?.zoomOut()} className="grid size-9 place-items-center text-xl leading-none hover:bg-surface-2">−</button>
+        </div>
+        <select aria-label="Map type" title="Choose map type" value={baseMap} onChange={(event) => setBaseMap(event.target.value as typeof baseMap)} className="h-9 rounded-md border border-border bg-surface/95 px-2 text-xs font-medium text-fg shadow-md backdrop-blur">
+          <option value="street">Street</option><option value="voyager">Light</option><option value="satellite">Satellite</option>
+        </select>
+      </div>
+    </div>
+  );
 }
 
 async function fitFleet(map: import("leaflet").Map, vehicles: LiveVehicle[]) {
