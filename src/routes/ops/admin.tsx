@@ -18,13 +18,14 @@ function AdminPage() {
   const companies = useQuery({ queryKey: ["companies"], queryFn: () => listCompanies() });
   const health = useQuery({ queryKey: ["health"], queryFn: () => getHealth(), retry: false });
   const [open, setOpen] = useState(false);
+  const [editingCompanyId, setEditingCompanyId] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [city, setCity] = useState("Nairobi");
   const [staffEmail, setStaffEmail] = useState("");
   const mut = useMutation({
-    mutationFn: () => createCompany({ data: { name, city } }),
+    mutationFn: () => createCompany({ data: { id: editingCompanyId ?? undefined, name, city } }),
     onSuccess: () => {
-      toast.success("Company created");
+      toast.success(editingCompanyId ? "Company updated" : "Company created");
       setOpen(false);
       qc.invalidateQueries({ queryKey: ["companies"] });
     },
@@ -57,7 +58,7 @@ function AdminPage() {
             <DialogTrigger asChild>
               <Button size="sm">New company</Button>
             </DialogTrigger>
-            <DialogContent title="Create company">
+            <DialogContent title={editingCompanyId ? "Edit company" : "Create company"}>
               <form
                 className="space-y-3"
                 onSubmit={(e) => {
@@ -67,7 +68,7 @@ function AdminPage() {
               >
                 <div className="space-y-1"><Label>Name</Label><Input required value={name} onChange={(e) => setName(e.target.value)} /></div>
                 <div className="space-y-1"><Label>City</Label><Input value={city} onChange={(e) => setCity(e.target.value)} /></div>
-                <Button className="w-full" type="submit">Create</Button>
+                <Button className="w-full" type="submit" disabled={mut.isPending}>{editingCompanyId ? "Save changes" : "Create"}</Button>
               </form>
             </DialogContent>
           </Dialog>
@@ -101,6 +102,12 @@ function AdminPage() {
               </div>
             </div>
             <div className="flex flex-wrap items-center gap-2">
+              <Button size="sm" variant="secondary" onClick={() => {
+                setEditingCompanyId(c.id);
+                setName(c.name);
+                setCity(c.city ?? "");
+                setOpen(true);
+              }}>Edit company</Button>
               <Button size="sm" variant="secondary" onClick={() => enter(c.id, "company_admin")}>
                 Enter as admin
               </Button>
