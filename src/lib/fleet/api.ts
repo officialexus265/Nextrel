@@ -3252,7 +3252,13 @@ export const deleteVehicle = createServerFn({ method: "POST" })
         (select count(*) from trips where vehicle_id = ${data.id}) +
         (select count(*) from stops where vehicle_id = ${data.id}) +
         (select count(*) from fuel_events where vehicle_id = ${data.id}) +
-        (select count(*) from alerts where vehicle_id = ${data.id})
+        (select count(*) from alerts where vehicle_id = ${data.id}) +
+        (select count(*) from maintenance_reminders where vehicle_id = ${data.id}) +
+        (select count(*) from documents where vehicle_id = ${data.id}) +
+        (select count(*) from media_files where vehicle_id = ${data.id}) +
+        (select count(*) from driver_assignments where vehicle_id = ${data.id}) +
+        (select count(*) from behavior_events where vehicle_id = ${data.id}) +
+        (select count(*) from device_commands where vehicle_id = ${data.id})
       )::int as n
     `;
     if ((history[0]?.n ?? 0) > 0) throw new Error("This vehicle has operational history. Keep it in the fleet register; historical records must not be deleted.");
