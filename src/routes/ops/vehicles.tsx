@@ -20,6 +20,16 @@ function VehiclesPage() {
   const [plate, setPlate] = useState("");
   const [make, setMake] = useState("");
   const [model, setModel] = useState("");
+  const remove = useMutation({
+    mutationFn: (id: string) => deleteVehicle({ data: { id } }),
+    onSuccess: () => {
+      toast.success("Vehicle removed");
+      qc.invalidateQueries({ queryKey: ["vehicles"] });
+      qc.invalidateQueries({ queryKey: ["live-fleet"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
   const mut = useMutation({
     mutationFn: () => saveVehicle({ data: { id: editingId ?? undefined, name, plate, make, model } }),
     onSuccess: () => {
