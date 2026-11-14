@@ -3418,6 +3418,11 @@ export const updateUserRole = createServerFn({ method: "POST" })
     if (!target) throw new Error("User not found");
     if (target.role === "super_admin") throw new Error("Platform administrator roles are protected.");
     await sql`update profiles set role = ${data.role} where user_id = ${data.userId}`;
+    if (data.role === "field_admin") {
+      await sql`insert into field_assignments (user_id, company_id) select ${data.userId}, id from companies on conflict do nothing`;
+    } else {
+      await sql`delete from field_assignments where user_id = ${data.userId}`;
+    }
     await sql`insert into audit_logs (id, company_id, actor_id, action, target, meta) values (${nid("aud")}, ${target.company_id}, ${session.userId}, 'user.role_updated', ${target.email ?? data.userId}, ${JSON.stringify({ from: target.role, to: data.role })}::jsonb)`;
     return { ok: true };
   });
