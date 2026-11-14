@@ -24,8 +24,32 @@ export function LiveMap({ vehicles, geofences, selectedId, follow, fitNonce, map
   onSelectRef.current = onSelect;
   const [ready, setReady] = useState(false);
   const [baseMap, setBaseMap] = useState<"street" | "voyager" | "satellite">("street");
+  const [mapPreferenceLoaded, setMapPreferenceLoaded] = useState(false);
   const tileRef = useRef<import("leaflet").TileLayer | null>(null);
   const satelliteLabelsRef = useRef<import("leaflet").TileLayer | null>(null);
+  const satellitePlacesRef = useRef<import("leaflet").TileLayer | null>(null);
+
+  useEffect(() => {
+    try {
+      const saved = window.localStorage.getItem("nextrel-map-style");
+      if (saved === "street" || saved === "voyager" || saved === "satellite") {
+        setBaseMap(saved);
+      }
+    } catch {
+      // Storage may be unavailable; keep the default street map.
+    } finally {
+      setMapPreferenceLoaded(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!mapPreferenceLoaded) return;
+    try {
+      window.localStorage.setItem("nextrel-map-style", baseMap);
+    } catch {
+      // The map remains usable when browser storage is unavailable.
+    }
+  }, [baseMap, mapPreferenceLoaded]);
 
   useEffect(() => {
     if (!hostRef.current || mapRef.current) return;
@@ -37,7 +61,6 @@ export function LiveMap({ vehicles, geofences, selectedId, follow, fitNonce, map
       const initialZoom = mapCenter.label === "Malawi" ? 6 : 12;
       const map = L.map(hostRef.current, { zoomControl: false, attributionControl: true })
         .setView([mapCenter.lat, mapCenter.lng], initialZoom);
-      tileRef.current = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { attribution: "&copy; OpenStreetMap contributors", maxZoom: 19 }).addTo(map);
       geoRef.current = L.layerGroup().addTo(map);
       mapRef.current = map;
       setReady(true);
@@ -51,6 +74,7 @@ export function LiveMap({ vehicles, geofences, selectedId, follow, fitNonce, map
       trailRef.current = null;
       tileRef.current = null;
       satelliteLabelsRef.current = null;
+      satellitePlacesRef.current = null;
     };
   }, []);
 
@@ -62,11 +86,13 @@ export function LiveMap({ vehicles, geofences, selectedId, follow, fitNonce, map
 
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !ready) return;
+    if (!map || !ready || !mapPreferenceLoaded) return;
     void import("leaflet").then((L) => {
       tileRef.current?.remove();
       satelliteLabelsRef.current?.remove();
+      satellitePlacesRef.current?.remove();
       satelliteLabelsRef.current = null;
+      satellitePlacesRef.current = null;
       const layers = {
         street: L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { attribution: "&copy; OpenStreetMap contributors", maxZoom: 19 }),
         voyager: L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", { attribution: "&copy; OpenStreetMap contributors &copy; CARTO", maxZoom: 20 }),
@@ -74,10 +100,11 @@ export function LiveMap({ vehicles, geofences, selectedId, follow, fitNonce, map
       };
       tileRef.current = layers[baseMap].addTo(map);
       if (baseMap === "satellite") {
-        satelliteLabelsRef.current = L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}", { attribution: "Roads & labels &copy; Esri", maxZoom: 19, pane: "overlayPane", opacity: 0.95 }).addTo(map);
+        satelliteLabelsRef.current = L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}", { attribution: "Roads &copy; Esri", maxZoom: 19, pane: "overlayPane", opacity: 0.95 }).addTo(map);
+        satellitePlacesRef.current = L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}", { attribution: "Place names & boundaries &copy; Esri", maxZoom: 19, pane: "overlayPane", opacity: 1 }).addTo(map);
       }
     });
-  }, [baseMap, ready]);
+  }, [baseMap, ready, mapPreferenceLoaded]);
   useEffect(() => {
     const map = mapRef.current;
     const group = geoRef.current;
