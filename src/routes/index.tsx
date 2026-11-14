@@ -4,7 +4,7 @@ import { ArrowRight } from "lucide-react";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { getLandingSettings } from "@/lib/fleet/api";
 import { Button } from "@/components/ui/button";
-import { NextrelMark } from "@/components/layout/app-shell";
+import { KestrelMark } from "@/components/layout/app-shell";
 
 export const Route = createFileRoute("/")({ component: Home });
 
@@ -61,8 +61,8 @@ function Home() {
 
       <header className="relative z-10 mx-auto flex max-w-6xl items-center justify-between px-5 py-6">
         <div className="flex items-center gap-2.5">
-          <NextrelMark />
-          <span className="text-sm font-semibold tracking-[0.22em]">Nextrel</span>
+          <KestrelMark />
+          <span className="text-sm font-semibold tracking-[0.22em]">KESTREL</span>
         </div>
         <Button asChild size="sm" variant="secondary">
           <Link to="/login">Sign in</Link>

@@ -1,4 +1,4 @@
-# Nextrel — Beginner Hosting & Testing Guide
+# Kestrel — Beginner Hosting & Testing Guide
 
 This guide follows the System Blueprint (Vercel + Neon + Cloudflare R2, ~$200/year ceiling).  
 You do **not** need to be a DevOps expert. Follow the steps in order.
@@ -87,7 +87,7 @@ Open **http://localhost:8080**
 
 ## 4. Media: Cloudflare R2 (optional at start)
 
-1. Cloudflare Dashboard → **R2** → Create bucket (e.g. `Nextrel-media`).
+1. Cloudflare Dashboard → **R2** → Create bucket (e.g. `kestrel-media`).
 2. Create an API token with Object Read & Write for that bucket.
 3. Note: Account ID, Access Key ID, Secret Access Key, Bucket name, public URL (if you enable public access or use a custom domain).
 
@@ -110,7 +110,7 @@ Later, wire the app’s media upload path to R2 (S3-compatible) using those cred
    |------|------------------|
    | `DATABASE_URL` | Neon connection string |
    | `BETTER_AUTH_SECRET` | Long random string (e.g. `openssl rand -hex 32`) |
-   | `BETTER_AUTH_URL` | Your production URL, e.g. `https://Nextrel.vercel.app` |
+   | `BETTER_AUTH_URL` | Your production URL, e.g. `https://kestrel.vercel.app` |
    | Auth provider keys | Only if you enable Google/GitHub etc. |
    | R2 vars (later) | `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET` |
 

@@ -29,7 +29,7 @@ export function buildInvoicePdf(inv: InvoicePdfInput): string {
     ops.push("BT", `/F1 ${size} Tf`, `${x} ${y} Td`, `(${esc(line)}) Tj`, "ET");
   };
 
-  text(72, 720, 20, "Nextrel");
+  text(72, 720, 20, "KESTREL");
   text(72, 698, 11, "Fleet operations invoice");
   let y = 650;
   for (const [label, value] of rows) {

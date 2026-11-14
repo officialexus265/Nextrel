@@ -115,7 +115,7 @@ export function PlaybackMap({
     (async () => {
       const L = await import("leaflet");
       if (cancelled) return;
-      const html = `<div class="Nextrel-marker" style="color:var(--color-live);transform:rotate(${p.heading}deg)"><span></span></div>`;
+      const html = `<div class="kestrel-marker" style="color:var(--color-live);transform:rotate(${p.heading}deg)"><span></span></div>`;
       const icon = L.divIcon({
         className: "bg-transparent border-0",
         html,

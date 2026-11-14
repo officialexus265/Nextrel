@@ -196,7 +196,7 @@ export async function tickSimulation(sql: Sql) {
     try {
       await dispatchDueReports(sql, null);
     } catch (err) {
-      console.error("[Nextrel] mail desk failed", err);
+      console.error("[kestrel] mail desk failed", err);
     }
   }
 

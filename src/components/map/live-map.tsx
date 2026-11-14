@@ -113,7 +113,7 @@ export function LiveMap({ vehicles, geofences, selectedId, follow, fitNonce, onS
           historyRef.current.set(v.id, hist);
         }
         const selected = selectedId === v.id;
-        const html = `<div class="Nextrel-pin${selected ? " is-selected" : ""}"><div class="Nextrel-marker" style="color:${movementColor(v.movement)};transform:rotate(${v.heading}deg)"><span></span></div><div class="Nextrel-plate">${escapeHtml(v.plate)}</div></div>`;
+        const html = `<div class="kestrel-pin${selected ? " is-selected" : ""}"><div class="kestrel-marker" style="color:${movementColor(v.movement)};transform:rotate(${v.heading}deg)"><span></span></div><div class="kestrel-plate">${escapeHtml(v.plate)}</div></div>`;
         const icon = L.divIcon({
           className: "bg-transparent border-0",
           html,

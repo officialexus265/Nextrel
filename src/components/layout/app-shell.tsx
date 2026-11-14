@@ -121,9 +121,9 @@ export function AppShell({
     <div className="flex min-h-dvh bg-bg text-fg">
       <aside className="hidden w-60 shrink-0 flex-col border-r border-border bg-surface md:flex">
         <div className="flex items-center gap-2 px-4 py-4">
-          <NextrelMark />
+          <KestrelMark />
           <div>
-            <div className="text-sm font-semibold tracking-[0.18em]">Nextrel</div>
+            <div className="text-sm font-semibold tracking-[0.18em]">KESTREL</div>
             <div className="text-[11px] uppercase tracking-[0.16em] text-subtle">Fleet ops</div>
           </div>
         </div>
@@ -154,7 +154,7 @@ export function AppShell({
           ) : null}
           <div className="min-w-0">
             <div className="text-[11px] uppercase tracking-[0.14em] text-subtle">{ROLE_LABEL[session.role]}</div>
-            <div className="truncate text-sm">{session.companyName ?? session.name ?? "Nextrel"}</div>
+            <div className="truncate text-sm">{session.companyName ?? session.name ?? "Kestrel"}</div>
           </div>
         </div>
       </aside>
@@ -162,8 +162,8 @@ export function AppShell({
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="flex h-14 items-center gap-2 border-b border-border bg-surface/80 px-3 backdrop-blur md:px-5">
           <div className="flex items-center gap-2 md:hidden">
-            <NextrelMark />
-            <span className="text-sm font-semibold tracking-[0.14em]">Nextrel</span>
+            <KestrelMark />
+            <span className="text-sm font-semibold tracking-[0.14em]">KESTREL</span>
           </div>
           {session.impersonating && (
             <Badge tone="idle">Viewing as {ROLE_LABEL[session.role]}{session.companyName ? ` · ${session.companyName}` : ""}</Badge>
@@ -256,7 +256,7 @@ export function AppShell({
   );
 }
 
-export function NextrelMark({ className }: { className?: string }) {
+export function KestrelMark({ className }: { className?: string }) {
   return (
     <span className={cn("grid size-8 place-items-center rounded-[var(--radius-sm)] bg-surface-2", className)}>
       <Fuel className="size-4 text-live" />

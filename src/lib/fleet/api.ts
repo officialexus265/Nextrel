@@ -181,7 +181,7 @@ export const getLiveFleet = createServerFn({ method: "GET" })
     try {
       await (await import("./simulate")).tickSimulation(sql);
     } catch (err) {
-      console.error("[Nextrel] tick failed", err);
+      console.error("[kestrel] tick failed", err);
     }
     const scope = await companyScope(sql, session);
     const rows = await sql<LiveRow>`

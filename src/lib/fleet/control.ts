@@ -174,7 +174,7 @@ export async function fileSchedule(sql: Sql, id: string, force = false) {
     `Fuel logged: ${stats.litres} L`,
     `Open alerts: ${stats.openAlerts}`,
     "",
-    "Filed on the Nextrel mail desk. A mail relay is not connected, so this copy stayed on the platform.",
+    "Filed on the Kestrel mail desk. A mail relay is not connected, so this copy stayed on the platform.",
   ].join("\n");
   await sql`
     insert into mail_queue (id, company_id, to_email, subject, body, kind, status)

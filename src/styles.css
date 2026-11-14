@@ -96,7 +96,7 @@
   cursor: crosshair;
 }
 
-.Nextrel-marker {
+.kestrel-marker {
   display: grid;
   place-items: center;
   width: 28px;
@@ -104,7 +104,7 @@
   transform-origin: 50% 50%;
 }
 
-.Nextrel-marker span {
+.kestrel-marker span {
   width: 18px;
   height: 18px;
   clip-path: polygon(50% 0%, 92% 100%, 50% 78%, 8% 100%);
@@ -112,14 +112,14 @@
   filter: drop-shadow(0 0 4px currentColor);
 }
 
-.Nextrel-pin {
+.kestrel-pin {
   display: flex;
   width: 78px;
   flex-direction: column;
   align-items: center;
 }
 
-.Nextrel-plate {
+.kestrel-plate {
   margin-top: -2px;
   max-width: 76px;
   overflow: hidden;
@@ -136,7 +136,7 @@
   letter-spacing: 0.02em;
 }
 
-.Nextrel-pin.is-selected .Nextrel-plate {
+.kestrel-pin.is-selected .kestrel-plate {
   background: var(--color-accent);
   color: var(--color-accent-fg);
 }

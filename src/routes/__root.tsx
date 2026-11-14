@@ -6,7 +6,7 @@ import { AuthProvider } from "@/lib/auth/provider";
 import { PreviewHostBridge } from "@/components/preview-host-bridge";
 import appCss from "../styles.css?url";
 
-const APP_NAME = "Nextrel";
+const APP_NAME = "Kestrel";
 
 export const Route = createRootRoute({
   head: () => ({
@@ -17,7 +17,7 @@ export const Route = createRootRoute({
       { name: "theme-color", content: "#08090c" },
       {
         name: "description",
-        content: "Nextrel is a multi-tenant vehicle tracking and fleet operations platform.",
+        content: "Kestrel is a multi-tenant vehicle tracking and fleet operations platform.",
       },
     ],
     links: [

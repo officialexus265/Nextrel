@@ -88,7 +88,7 @@ function ReportsPage() {
 
   function exportCsv() {
     const lines = [headers.join(","), ...rows.map((r) => headers.map((h) => JSON.stringify(r[h] ?? "")).join(","))];
-    download(`Nextrel-${kind}.csv`, "text/csv", lines.join("\n"));
+    download(`kestrel-${kind}.csv`, "text/csv", lines.join("\n"));
   }
 
   function exportExcel() {
@@ -106,7 +106,7 @@ function ReportsPage() {
 <Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">
 <Worksheet ss:Name="${xmlEscape(kind)}"><Table><Row>${head}</Row>${body}</Table></Worksheet>
 </Workbook>`;
-    download(`Nextrel-${kind}.xls`, "application/vnd.ms-excel", xml);
+    download(`kestrel-${kind}.xls`, "application/vnd.ms-excel", xml);
   }
 
   return (
@@ -254,7 +254,7 @@ function ReportDesk({ role, companyId }: { role: string; companyId: string | nul
       <p className="mt-1 text-sm text-muted">
         {paused
           ? "The platform owner paused the mail desk."
-          : "Due reports file on the mail desk. A relay is not connected, so they stay inside Nextrel."}
+          : "Due reports file on the mail desk. A relay is not connected, so they stay inside Kestrel."}
       </p>
       <form
         className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-5"

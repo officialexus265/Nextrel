@@ -1,14 +1,19 @@
 import { createFileRoute, Navigate } from "@tanstack/react-router";
 import { useState } from "react";
+import { Eye, EyeOff } from "lucide-react";
 import { GROK_PROVIDERS, authClient, authEnabled, signIn } from "@/lib/auth/client";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { NextrelMark } from "@/components/layout/app-shell";
+import { KestrelMark } from "@/components/layout/app-shell";
 import { Separator } from "@/components/ui/separator";
 
 export const Route = createFileRoute("/login")({ component: Login });
+
+/** Simple client-side cooldown after repeated failures (not a substitute for server rate limits). */
+const MAX_ATTEMPTS = 5;
+const LOCK_MS = 30_000;
 
 function Login() {
   const { user, isPending } = useCurrentUserState();
@@ -18,14 +23,23 @@ function Login() {
   const [name, setName] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [fails, setFails] = useState(0);
+  const [lockedUntil, setLockedUntil] = useState(0);
 
   if (isPending) {
     return <div className="grid min-h-dvh place-items-center bg-bg text-muted">Loading session…</div>;
   }
   if (user) return <Navigate to="/ops" />;
 
+  const locked = Date.now() < lockedUntil;
+
   async function onEmail(e: React.FormEvent) {
     e.preventDefault();
+    if (locked) {
+      setError("Too many attempts. Wait a moment and try again.");
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
@@ -36,8 +50,17 @@ function Login() {
         const res = await authClient.signIn.email({ email, password, callbackURL: "/ops" });
         if (res.error) throw new Error(res.error.message);
       }
+      setFails(0);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Sign-in failed");
+      const next = fails + 1;
+      setFails(next);
+      if (next >= MAX_ATTEMPTS) {
+        setLockedUntil(Date.now() + LOCK_MS);
+        setFails(0);
+        setError("Too many attempts. Wait 30 seconds and try again.");
+      } else {
+        setError(err instanceof Error ? err.message : "Sign-in failed");
+      }
     } finally {
       setBusy(false);
     }
@@ -47,9 +70,9 @@ function Login() {
     <main className="grid min-h-dvh place-items-center bg-bg px-4">
       <div className="w-full max-w-sm rounded-[var(--radius-xl)] border border-border bg-surface p-6">
         <div className="mb-6 flex items-center gap-3">
-          <NextrelMark />
+          <KestrelMark />
           <div>
-            <div className="text-sm font-semibold tracking-[0.2em]">Nextrel</div>
+            <div className="text-sm font-semibold tracking-[0.2em]">KESTREL</div>
             <div className="text-xs text-muted">Fleet operations</div>
           </div>
         </div>
@@ -90,11 +113,30 @@ function Login() {
           </div>
           <div className="space-y-1.5">
             <Label>Password</Label>
-            <Input type="password" required minLength={8} value={password} onChange={(e) => setPassword(e.target.value)} />
+            <div className="relative">
+              <Input
+                type={showPassword ? "text" : "password"}
+                required
+                minLength={8}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="pr-10"
+                autoComplete={mode === "up" ? "new-password" : "current-password"}
+              />
+              <button
+                type="button"
+                className="absolute inset-y-0 right-0 flex w-10 items-center justify-center text-muted hover:text-fg"
+                onClick={() => setShowPassword((v) => !v)}
+                aria-label={showPassword ? "Hide password" : "Show password"}
+                tabIndex={-1}
+              >
+                {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+              </button>
+            </div>
           </div>
           {error && <p className="text-sm text-down">{error}</p>}
-          <Button type="submit" className="w-full" disabled={busy}>
-            {busy ? "Working…" : mode === "up" ? "Create account" : "Sign in with email"}
+          <Button type="submit" className="w-full" disabled={busy || locked}>
+            {busy ? "Working…" : locked ? "Temporarily locked" : mode === "up" ? "Create account" : "Sign in with email"}
           </Button>
         </form>
         <button

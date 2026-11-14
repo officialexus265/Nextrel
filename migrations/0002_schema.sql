@@ -1,4 +1,4 @@
--- Nextrel fleet platform schema
+-- Kestrel fleet platform schema
 
 create table if not exists profiles (
   user_id text primary key,
