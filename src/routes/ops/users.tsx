@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { toast } from "sonner";
-import { getAppSession, inviteUser, listTeam, setCompanyMark, setUserActive, updateUserRole } from "@/lib/fleet/api";
+import { getAppSession, inviteUser, listTeam, revokeInvite, setCompanyMark, setUserActive, updateUserRole } from "@/lib/fleet/api";
 import { PageHeader } from "@/components/layout/app-shell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -19,6 +19,14 @@ function UsersPage() {
   const [open, setOpen] = useState(false);
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<"tracker" | "accounts" | "company_admin">("tracker");
+  const revoke = useMutation({
+    mutationFn: (id: string) => revokeInvite({ data: { id } }),
+    onSuccess: () => {
+      toast.success("Invite revoked");
+      qc.invalidateQueries({ queryKey: ["team"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
   const accountStatus = useMutation({
     mutationFn: (input: { userId: string; active: boolean }) => setUserActive({ data: input }),
     onSuccess: () => {
@@ -123,9 +131,14 @@ function UsersPage() {
         <h2 className="mb-2 mt-8 text-xs uppercase tracking-[0.14em] text-subtle">Pending invites</h2>
         <ul className="space-y-2">
           {(q.data?.invites ?? []).map((i) => (
-            <li key={i.id} className="flex items-center justify-between rounded-[var(--radius-sm)] border border-border px-3 py-2 text-sm">
-              <span>{i.email}</span>
-              <Badge tone="idle">{i.role}</Badge>
+            <li key={i.id} className="flex items-center justify-between gap-3 rounded-[var(--radius-sm)] border border-border px-3 py-2 text-sm">
+              <div className="min-w-0">
+                <span className="block truncate">{i.email}</span>
+                <Badge tone="idle">{i.role}</Badge>
+              </div>
+              <Button size="sm" variant="ghost" disabled={revoke.isPending} onClick={() => {
+                if (window.confirm(`Revoke the pending invitation for ${i.email}?`)) revoke.mutate(i.id);
+              }}>Revoke</Button>
             </li>
           ))}
           {(q.data?.invites ?? []).length === 0 && <p className="text-sm text-muted">No pending invites.</p>}
