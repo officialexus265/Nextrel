@@ -21,6 +21,7 @@ function MaintenancePage() {
   const [vehicleId, setVehicleId] = useState("");
   const [title, setTitle] = useState("");
   const [dueOdometer, setDueOdometer] = useState("");
+  const [dueHours, setDueHours] = useState("");
   const [dueDate, setDueDate] = useState("");
   const [notes, setNotes] = useState("");
   const mut = useMutation({
@@ -47,6 +48,7 @@ function MaintenancePage() {
           vehicleId,
           title,
           dueOdometer: dueOdometer ? Number(dueOdometer) : undefined,
+          dueHours: dueHours ? Number(dueHours) : undefined,
           dueDate: dueDate || undefined,
           notes: notes || undefined,
         },
@@ -57,6 +59,7 @@ function MaintenancePage() {
       setEditingId(null);
       setTitle("");
       setDueOdometer("");
+      setDueHours("");
       setDueDate("");
       setNotes("");
       qc.invalidateQueries({ queryKey: ["maintenance"] });
@@ -108,6 +111,10 @@ function MaintenancePage() {
                     <Input inputMode="numeric" value={dueOdometer} onChange={(e) => setDueOdometer(e.target.value)} />
                   </div>
                   <div className="space-y-1">
+                    <Label>Due engine hours</Label>
+                    <Input inputMode="numeric" value={dueHours} onChange={(e) => setDueHours(e.target.value)} />
+                  </div>
+                  <div className="space-y-1">
                     <Label>Due date</Label>
                     <Input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
                   </div>
@@ -157,6 +164,7 @@ function MaintenancePage() {
                       setVehicleId(m.vehicleId);
                       setTitle(m.title);
                       setDueOdometer(m.dueOdometer == null ? "" : String(m.dueOdometer));
+                      setDueHours(m.dueHours == null ? "" : String(m.dueHours));
                       setDueDate(m.dueDate ? String(m.dueDate).slice(0, 10) : "");
                       setNotes(m.notes ?? "");
                       setOpen(true);
