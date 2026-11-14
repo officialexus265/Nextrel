@@ -1922,7 +1922,6 @@ export const saveDriver = createServerFn({ method: "POST" })
     const { sql, session } = await ctx(context.userId);
     if (!["super_admin", "company_admin"].includes(session.role)) throw new Error("Forbidden");
     const companyId = session.companyId;
-    if (!companyId) throw new Error("Select a company first");
     if (data.id) {
       const scope = await companyScope(sql, session);
       const current = (await sql<{ company_id: string; name: string }>`select company_id, name from drivers where id = ${data.id}`)[0];
@@ -1930,6 +1929,7 @@ export const saveDriver = createServerFn({ method: "POST" })
       await sql`update drivers set name = ${data.name}, license_no = ${data.licenseNo ?? null}, phone = ${data.phone ?? null} where id = ${data.id}`;
       await sql`insert into audit_logs (id, company_id, actor_id, action, target) values (${nid("aud")}, ${current.company_id}, ${session.userId}, 'driver.updated', ${data.name})`;
     } else {
+      if (!companyId) throw new Error("Select a company first");
       const id = nid("drv");
       await sql`
         insert into drivers (id, company_id, name, license_no, phone)
