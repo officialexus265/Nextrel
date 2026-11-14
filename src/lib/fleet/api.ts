@@ -1357,12 +1357,13 @@ export const saveGeofence = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .validator(
     z.object({
+      id: z.string().optional(),
       name: z.string().min(2).max(80),
       kind: z.enum(["circle", "polygon", "route"]),
       zoneType: z.enum(["allowed", "forbidden"]),
       groupName: z.string().max(48).optional(),
       geometry: fenceGeometry,
-      schedule: fenceSchedule.optional(),
+      schedule: fenceSchedule.nullable().optional(),
     }),
   )
   .handler(async ({ context, data }) => {
@@ -1371,26 +1372,28 @@ export const saveGeofence = createServerFn({ method: "POST" })
     const companyId = session.companyId;
     if (!companyId) throw new Error("View as a company admin before drawing fences");
     if (data.geometry.type !== data.kind) throw new Error("Geometry does not match kind");
-    const id = nid("gf");
+    const id = data.id ?? nid("gf");
     const schedule = data.schedule ?? null;
-    await sql`
-      insert into geofences (id, company_id, name, kind, group_name, zone_type, geometry, schedule, active)
-      values (
-        ${id},
-        ${companyId},
-        ${data.name},
-        ${data.kind},
-        ${data.groupName?.trim() || null},
-        ${data.zoneType},
-        ${JSON.stringify(data.geometry)}::jsonb,
-        ${schedule ? JSON.stringify(schedule) : null}::jsonb,
-        true
-      )
-    `;
-    await sql`
-      insert into audit_logs (id, company_id, actor_id, action, target)
-      values (${nid("aud")}, ${companyId}, ${session.userId}, 'geofence.created', ${data.name})
-    `;
+    if (data.id) {
+      const current = (await sql<{ company_id: string; name: string }>`select company_id, name from geofences where id = ${data.id}`)[0];
+      if (!current || !inScope(await companyScope(sql, session), current.company_id)) throw new Error("Geofence not found");
+      await sql`
+        update geofences
+        set name = ${data.name}, kind = ${data.kind}, group_name = ${data.groupName?.trim() || null},
+          zone_type = ${data.zoneType}, geometry = ${JSON.stringify(data.geometry)}::jsonb,
+          schedule = ${schedule ? JSON.stringify(schedule) : null}::jsonb
+        where id = ${data.id}
+      `;
+      await sql`insert into audit_logs (id, company_id, actor_id, action, target) values (${nid("aud")}, ${current.company_id}, ${session.userId}, 'geofence.updated', ${data.name})`;
+    } else {
+      await sql`
+        insert into geofences (id, company_id, name, kind, group_name, zone_type, geometry, schedule, active)
+        values (${id}, ${companyId}, ${data.name}, ${data.kind}, ${data.groupName?.trim() || null},
+          ${data.zoneType}, ${JSON.stringify(data.geometry)}::jsonb,
+          ${schedule ? JSON.stringify(schedule) : null}::jsonb, true)
+      `;
+      await sql`insert into audit_logs (id, company_id, actor_id, action, target) values (${nid("aud")}, ${companyId}, ${session.userId}, 'geofence.created', ${data.name})`;
+    }
     return { id };
   });
 
@@ -1416,9 +1419,12 @@ export const deleteGeofence = createServerFn({ method: "POST" })
   .validator(z.object({ id: z.string() }))
   .handler(async ({ context, data }) => {
     const { sql, session } = await ctx(context.userId);
+    if (!["super_admin", "company_admin"].includes(session.role)) throw new Error("Forbidden");
     const scope = await companyScope(sql, session);
     const row = (await sql<{ company_id: string; name: string }>`select company_id, name from geofences where id = ${data.id}`)[0];
     if (!row || !inScope(scope, row.company_id)) throw new Error("Not found");
+    const events = await sql<{ n: number }>`select count(*)::int as n from geofence_events where geofence_id = ${data.id}`;
+    if ((events[0]?.n ?? 0) > 0) throw new Error("This geofence has event history. Pause it instead of deleting it.");
     await sql`delete from geofences where id = ${data.id}`;
     await sql`
       insert into audit_logs (id, company_id, actor_id, action, target)
