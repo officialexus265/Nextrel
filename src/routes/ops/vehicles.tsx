@@ -20,6 +20,7 @@ function VehiclesPage() {
   const [plate, setPlate] = useState("");
   const [make, setMake] = useState("");
   const [model, setModel] = useState("");
+  const [companyId, setCompanyId] = useState("");
   const remove = useMutation({
     mutationFn: (id: string) => deleteVehicle({ data: { id } }),
     onSuccess: () => {
@@ -31,7 +32,7 @@ function VehiclesPage() {
   });
 
   const mut = useMutation({
-    mutationFn: () => saveVehicle({ data: { id: editingId ?? undefined, name, plate, make, model } }),
+    mutationFn: () => saveVehicle({ data: { id: editingId ?? undefined, name, plate, make, model, companyId: companyId || undefined } }),
     onSuccess: () => {
       toast.success(editingId ? "Vehicle updated" : "Vehicle saved");
       setOpen(false);
@@ -103,6 +104,7 @@ function VehiclesPage() {
                       setPlate(v.plate);
                       setMake(v.make ?? "");
                       setModel(v.model ?? "");
+                      setCompanyId(v.company_id);
                       setOpen(true);
                     }}>Edit</Button>
                     <Button size="sm" variant="ghost" disabled={remove.isPending} onClick={() => {
