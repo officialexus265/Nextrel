@@ -1137,33 +1137,35 @@ export const listDevices = createServerFn({ method: "GET" })
 
 export const saveDevice = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
-  .validator(
-    z.object({
-      imei: z.string().min(8),
-      protocol: z.string(),
-      decoder: z.string(),
-      companyId: z.string(),
-      vehicleId: z.string().nullable().optional(),
-    }),
-  )
+  .validator(z.object({
+    id: z.string().optional(),
+    imei: z.string().min(8),
+    protocol: z.string(),
+    decoder: z.string(),
+    companyId: z.string(),
+    vehicleId: z.string().nullable().optional(),
+  }))
   .handler(async ({ context, data }) => {
     const { sql, session } = await ctx(context.userId);
     if (!["super_admin", "field_admin", "company_admin"].includes(session.role)) throw new Error("Forbidden");
     const scope = await companyScope(sql, session);
     if (!inScope(scope, data.companyId)) throw new Error("Forbidden");
+    if (data.id) {
+      const current = (await sql<{ company_id: string | null; imei: string }>`select company_id, imei from devices where id = ${data.id}`)[0];
+      if (!current || !inScope(scope, current.company_id)) throw new Error("Device not found");
+      await sql`update devices set imei = ${data.imei}, protocol = ${data.protocol}, decoder = ${data.decoder}, company_id = ${data.companyId}, vehicle_id = ${data.vehicleId ?? null} where id = ${data.id}`;
+      await sql`insert into audit_logs (id, company_id, actor_id, action, target) values (${nid("aud")}, ${data.companyId}, ${session.userId}, 'device.updated', ${data.imei})`;
+      return { ok: true, id: data.id };
+    }
     const id = nid("dev");
     await sql`
       insert into devices (id, company_id, vehicle_id, imei, protocol, decoder, secret)
       values (${id}, ${data.companyId}, ${data.vehicleId ?? null}, ${data.imei}, ${data.protocol}, ${data.decoder}, ${"sec_" + data.imei.slice(-6)})
       on conflict (imei) do update set company_id = excluded.company_id, vehicle_id = excluded.vehicle_id, protocol = excluded.protocol, decoder = excluded.decoder
     `;
-    await sql`
-      insert into audit_logs (id, company_id, actor_id, action, target)
-      values (${nid("aud")}, ${data.companyId}, ${session.userId}, 'device.registered', ${data.imei})
-    `;
-    return { ok: true };
+    await sql`insert into audit_logs (id, company_id, actor_id, action, target) values (${nid("aud")}, ${data.companyId}, ${session.userId}, 'device.registered', ${data.imei})`;
+    return { ok: true, id };
   });
-
 export const assignDevice = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .validator(z.object({ deviceId: z.string(), vehicleId: z.string().nullable() }))
