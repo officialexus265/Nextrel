@@ -182,18 +182,25 @@ export function AppShell({
                     View as <ChevronDown className="size-3.5" />
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent className="z-[1000]">
+                <DropdownMenuContent className="z-[10000]">
                   <DropdownMenuLabel>Platform</DropdownMenuLabel>
-        <DropdownMenuSeparator />
-                  {(companies.data ?? []).map((company) => (
-                    <div key={company.id}>
-                      <DropdownMenuLabel>{company.name}</DropdownMenuLabel>
-                      <DropdownMenuItem onSelect={() => viewAs("company_admin", company.id)}>Admin</DropdownMenuItem>
-                      <DropdownMenuItem onSelect={() => viewAs("tracker", company.id)}>Tracker</DropdownMenuItem>
-                      <DropdownMenuItem onSelect={() => viewAs("accounts", company.id)}>Accounts</DropdownMenuItem>
-                    </div>
-                  ))}               <DropdownMenuItem onSelect={() => viewAs("tracker", "co_harbor")}>Tracker</DropdownMenuItem>
-                  <DropdownMenuItem onSelect={() => viewAs("accounts", "co_harbor")}>Accounts</DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  {companies.isLoading ? (
+                    <DropdownMenuLabel>Loading companies…</DropdownMenuLabel>
+                  ) : companies.isError ? (
+                    <DropdownMenuLabel>Could not load companies</DropdownMenuLabel>
+                  ) : (companies.data ?? []).length === 0 ? (
+                    <DropdownMenuLabel>No companies available</DropdownMenuLabel>
+                  ) : (
+                    (companies.data ?? []).map((company) => (
+                      <div key={company.id}>
+                        <DropdownMenuLabel>{company.name}</DropdownMenuLabel>
+                        <DropdownMenuItem onSelect={() => viewAs("company_admin", company.id)}>Admin</DropdownMenuItem>
+                        <DropdownMenuItem onSelect={() => viewAs("tracker", company.id)}>Tracker</DropdownMenuItem>
+                        <DropdownMenuItem onSelect={() => viewAs("accounts", company.id)}>Accounts</DropdownMenuItem>
+                      </div>
+                    ))
+                  )}
                 </DropdownMenuContent>
               </DropdownMenu>
             )}
