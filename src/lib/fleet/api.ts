@@ -3289,8 +3289,14 @@ export const deleteDriver = createServerFn({ method: "POST" })
     const scope = await companyScope(sql, session);
     const driver = (await sql<{ id: string; company_id: string; name: string }>`select id, company_id, name from drivers where id = ${data.id}`)[0];
     if (!driver || !inScope(scope, driver.company_id)) throw new Error("Driver not found");
-    const assignments = await sql<{ n: number }>`select count(*)::int as n from driver_assignments where driver_id = ${data.id}`;
-    if ((assignments[0]?.n ?? 0) > 0) throw new Error("This driver has assignment history. Keep the record to preserve the audit trail.");
+    const protectedHistory = await sql<{ assignments: number; events: number }>`
+      select
+        (select count(*)::int from driver_assignments where driver_id = ${data.id}) as assignments,
+        (select count(*)::int from behavior_events where driver_id = ${data.id}) as events
+    `;
+    if ((protectedHistory[0]?.assignments ?? 0) > 0 || (protectedHistory[0]?.events ?? 0) > 0) {
+      throw new Error("This driver has assignment or behaviour history. Keep the record to preserve the audit trail.");
+    }
     await sql`update vehicles set assigned_driver_id = null where assigned_driver_id = ${data.id}`;
     await sql`delete from drivers where id = ${data.id} and company_id = ${driver.company_id}`;
     await sql`insert into audit_logs (id, company_id, actor_id, action, target) values (${nid("aud")}, ${driver.company_id}, ${session.userId}, 'driver.deleted', ${driver.name})`;
