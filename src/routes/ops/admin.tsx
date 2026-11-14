@@ -27,6 +27,7 @@ function AdminPage() {
     onSuccess: () => {
       toast.success(editingCompanyId ? "Company updated" : "Company created");
       setOpen(false);
+      setEditingCompanyId(null);
       qc.invalidateQueries({ queryKey: ["companies"] });
     },
     onError: (e: Error) => toast.error(e.message),
@@ -56,7 +57,11 @@ function AdminPage() {
         actions={
           <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
-              <Button size="sm">New company</Button>
+              <Button size="sm" onClick={() => {
+                setEditingCompanyId(null);
+                setName("");
+                setCity("");
+              }}>New company</Button>
             </DialogTrigger>
             <DialogContent title={editingCompanyId ? "Edit company" : "Create company"}>
               <form
