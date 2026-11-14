@@ -68,6 +68,8 @@ export type LiveVehicle = {
   openAlerts: number;
 };
 
+export type MapCenter = { lat: number; lng: number; label: string };
+
 export type LivePulse = {
   id: string;
   title: string;
