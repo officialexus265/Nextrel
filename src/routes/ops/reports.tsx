@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
-import { fileReportNow, getAppSession, getReports, listCompanies, listReportDesk, saveReportSchedule, setScheduleEnabled } from "@/lib/fleet/api";
+import { deleteReportSchedule, fileReportNow, getAppSession, getReports, listCompanies, listReportDesk, saveReportSchedule, setScheduleEnabled } from "@/lib/fleet/api";
 import { PageHeader } from "@/components/layout/app-shell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -222,11 +222,13 @@ function ReportDesk({ role, companyId }: { role: string; companyId: string | nul
   const [cadence, setCadence] = useState<"daily" | "weekly">("daily");
   const [recipient, setRecipient] = useState("");
   const [picked, setPicked] = useState(companyId ?? "");
+  const [editingScheduleId, setEditingScheduleId] = useState<string | null>(null);
   const target = role === "super_admin" ? picked || companies.data?.[0]?.id || "" : companyId ?? "";
   const save = useMutation({
-    mutationFn: () => saveReportSchedule({ data: { companyId: target, kind, cadence, recipient } }),
+    mutationFn: () => saveReportSchedule({ data: { id: editingScheduleId ?? undefined, companyId: target, kind, cadence, recipient } }),
     onSuccess: () => {
-      toast.success("Schedule saved");
+      toast.success(editingScheduleId ? "Schedule updated" : "Schedule saved");
+      setEditingScheduleId(null);
       setRecipient("");
       qc.invalidateQueries({ queryKey: ["report-desk"] });
       qc.invalidateQueries({ queryKey: ["control-desk"] });
@@ -236,6 +238,15 @@ function ReportDesk({ role, companyId }: { role: string; companyId: string | nul
   const toggle = useMutation({
     mutationFn: (input: { id: string; enabled: boolean }) => setScheduleEnabled({ data: input }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["report-desk"] }),
+    onError: (e: Error) => toast.error(e.message),
+  });
+  const remove = useMutation({
+    mutationFn: (id: string) => deleteReportSchedule({ data: { id } }),
+    onSuccess: () => {
+      toast.success("Schedule deleted");
+      qc.invalidateQueries({ queryKey: ["report-desk"] });
+      qc.invalidateQueries({ queryKey: ["control-desk"] });
+    },
     onError: (e: Error) => toast.error(e.message),
   });
   const file = useMutation({
@@ -305,7 +316,16 @@ function ReportDesk({ role, companyId }: { role: string; companyId: string | nul
           <Input required type="email" value={recipient} onChange={(e) => setRecipient(e.target.value)} placeholder="ops@company.example" className="mt-1" />
         </label>
         <div className="flex items-end">
-          <Button type="submit" size="sm" disabled={save.isPending || !target}>Schedule</Button>
+          <div className="flex items-end gap-2">
+            <Button type="submit" size="sm" disabled={save.isPending || !target}>{editingScheduleId ? "Save changes" : "Schedule"}</Button>
+            {editingScheduleId && <Button type="button" size="sm" variant="ghost" onClick={() => {
+              setEditingScheduleId(null);
+              setRecipient("");
+              setKind("trips");
+              setCadence("daily");
+              setPicked(companyId ?? "");
+            }}>Cancel</Button>}
+          </div>
         </div>
       </form>
       <ul className="mt-4 space-y-2">
@@ -320,6 +340,16 @@ function ReportDesk({ role, companyId }: { role: string; companyId: string | nul
               <Button size="sm" variant="secondary" disabled={!s.enabled || paused || file.isPending} onClick={() => file.mutate(s.id)}>
                 File now
               </Button>
+              <Button size="sm" variant="ghost" onClick={() => {
+                setEditingScheduleId(s.id);
+                setKind(s.kind as (typeof SCHEDULE_KINDS)[number]);
+                setCadence(s.cadence);
+                setRecipient(s.recipient);
+                setPicked(s.companyId);
+              }}>Edit</Button>
+              <Button size="sm" variant="ghost" disabled={remove.isPending} onClick={() => {
+                if (window.confirm(`Delete the ${s.cadence} ${s.kind} schedule for ${s.recipient}?`)) remove.mutate(s.id);
+              }}>Delete</Button>
               <Button size="sm" variant="ghost" onClick={() => toggle.mutate({ id: s.id, enabled: !s.enabled })}>
                 {s.enabled ? "Pause" : "Resume"}
               </Button>
