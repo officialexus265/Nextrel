@@ -106,6 +106,22 @@ export const setViewAs = createServerFn({ method: "POST" })
     return (await import("./session")).bootstrapSession(sql, session.userId);
   });
 
+const MALAWI_MAP_CENTER = { lat: -13.2543, lng: 34.3015, label: "Malawi" };
+const MALAWI_CITY_CENTERS: Record<string, { lat: number; lng: number }> = {
+  lilongwe: { lat: -13.9626, lng: 33.7741 }, blantyre: { lat: -15.7861, lng: 35.0058 },
+  mzuzu: { lat: -11.4448, lng: 34.0118 }, zomba: { lat: -15.3850, lng: 35.3188 },
+  kasungu: { lat: -13.0333, lng: 33.4833 }, mangochi: { lat: -14.4780, lng: 35.2640 },
+  salima: { lat: -13.7800, lng: 34.4500 }, karonga: { lat: -9.9333, lng: 33.9333 },
+  dedza: { lat: -14.3770, lng: 34.3330 }, ntcheu: { lat: -14.8200, lng: 34.6400 },
+  chitipa: { lat: -9.7030, lng: 33.2700 }, nkhotakota: { lat: -12.9270, lng: 34.2960 },
+  monkeybay: { lat: -14.0830, lng: 34.9170 },
+};
+function companyMapCenter(city: string | null | undefined) {
+  const normalized = city?.toLowerCase().replace(/[^a-z]/g, "") ?? "";
+  const key = Object.keys(MALAWI_CITY_CENTERS).find((name) => normalized.includes(name));
+  return key ? { ...MALAWI_CITY_CENTERS[key], label: city?.trim() || key } : MALAWI_MAP_CENTER;
+}
+
 type LiveRow = {
   id: string;
   company_id: string;
@@ -184,6 +200,15 @@ export const getLiveFleet = createServerFn({ method: "GET" })
       console.error("[kestrel] tick failed", err);
     }
     const scope = await companyScope(sql, session);
+    let landingCompanyId = session.companyId;
+    if (!landingCompanyId && scope?.length) {
+      const assigned = await sql<{ id: string }>`select id from companies where id = any(${scope}) order by name limit 1`;
+      landingCompanyId = assigned[0]?.id ?? null;
+    }
+    const landingRows = landingCompanyId
+      ? await sql<{ city: string | null }>`select city from companies where id = ${landingCompanyId} limit 1`
+      : [];
+    const mapCenter = companyMapCenter(landingRows[0]?.city);
     const rows = await sql<LiveRow>`
       with latest as (
         select distinct on (vehicle_id) *
@@ -335,7 +360,7 @@ export const getLiveFleet = createServerFn({ method: "GET" })
       paused = [];
     }
 
-    return { session, vehicles, kpis, geofences, pulse, signals, paused };
+    return { session, vehicles, kpis, geofences, pulse, signals, paused, mapCenter };
   });
 
 export const listAlerts = createServerFn({ method: "GET" })
