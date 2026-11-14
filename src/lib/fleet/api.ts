@@ -3200,3 +3200,100 @@ export const setLandingSettings = createServerFn({ method: "POST" })
     }
     return { ok: true };
   });
+
+
+// Safe removal actions for manually created fleet records. Historical telemetry,
+// assignments, calibrations, and completed maintenance are deliberately retained.
+export const deleteVehicle = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator(z.object({ id: z.string() }))
+  .handler(async ({ context, data }) => {
+    const { sql, session } = await ctx(context.userId);
+    if (![ "super_admin", "company_admin" ].includes(session.role)) throw new Error("Forbidden");
+    const scope = await companyScope(sql, session);
+    const vehicle = (await sql<{ id: string; company_id: string; plate: string }>`select id, company_id, plate from vehicles where id = ${data.id}`)[0];
+    if (!vehicle || !inScope(scope, vehicle.company_id)) throw new Error("Vehicle not found");
+    const history = await sql<{ n: number }>`
+      select (
+        (select count(*) from positions where vehicle_id = ${data.id}) +
+        (select count(*) from trips where vehicle_id = ${data.id}) +
+        (select count(*) from stops where vehicle_id = ${data.id}) +
+        (select count(*) from fuel_events where vehicle_id = ${data.id}) +
+        (select count(*) from alerts where vehicle_id = ${data.id})
+      )::int as n
+    `;
+    if ((history[0]?.n ?? 0) > 0) throw new Error("This vehicle has operational history. Keep it in the fleet register; historical records must not be deleted.");
+    await sql`update devices set vehicle_id = null where vehicle_id = ${data.id}`;
+    await sql`update drivers set id = id where id in (select assigned_driver_id from vehicles where id = ${data.id} and assigned_driver_id is not null)`;
+    await sql`delete from vehicles where id = ${data.id} and company_id = ${vehicle.company_id}`;
+    await sql`insert into audit_logs (id, company_id, actor_id, action, target) values (${nid("aud")}, ${vehicle.company_id}, ${session.userId}, 'vehicle.deleted', ${vehicle.plate})`;
+    return { ok: true };
+  });
+
+export const deleteDriver = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator(z.object({ id: z.string() }))
+  .handler(async ({ context, data }) => {
+    const { sql, session } = await ctx(context.userId);
+    if (![ "super_admin", "company_admin" ].includes(session.role)) throw new Error("Forbidden");
+    const scope = await companyScope(sql, session);
+    const driver = (await sql<{ id: string; company_id: string; name: string }>`select id, company_id, name from drivers where id = ${data.id}`)[0];
+    if (!driver || !inScope(scope, driver.company_id)) throw new Error("Driver not found");
+    const assignments = await sql<{ n: number }>`select count(*)::int as n from driver_assignments where driver_id = ${data.id}`;
+    if ((assignments[0]?.n ?? 0) > 0) throw new Error("This driver has assignment history. Keep the record to preserve the audit trail.");
+    await sql`update vehicles set assigned_driver_id = null where assigned_driver_id = ${data.id}`;
+    await sql`delete from drivers where id = ${data.id} and company_id = ${driver.company_id}`;
+    await sql`insert into audit_logs (id, company_id, actor_id, action, target) values (${nid("aud")}, ${driver.company_id}, ${session.userId}, 'driver.deleted', ${driver.name})`;
+    return { ok: true };
+  });
+
+export const deleteDevice = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator(z.object({ id: z.string() }))
+  .handler(async ({ context, data }) => {
+    const { sql, session } = await ctx(context.userId);
+    if (![ "super_admin", "field_admin", "company_admin" ].includes(session.role)) throw new Error("Forbidden");
+    const scope = await companyScope(sql, session);
+    const device = (await sql<{ id: string; company_id: string | null; imei: string }>`select id, company_id, imei from devices where id = ${data.id}`)[0];
+    if (!device || !inScope(scope, device.company_id)) throw new Error("Device not found");
+    const protectedRows = await sql<{ calibrations: number; commands: number }>`
+      select
+        (select count(*)::int from device_calibrations where device_id = ${data.id}) as calibrations,
+        (select count(*)::int from device_commands where device_id = ${data.id}) as commands
+    `;
+    if ((protectedRows[0]?.calibrations ?? 0) > 0 || (protectedRows[0]?.commands ?? 0) > 0) {
+      throw new Error("This device has calibration or command history. It cannot be permanently removed; retain the record for audit purposes.");
+    }
+    await sql`delete from devices where id = ${data.id}`;
+    await sql`insert into audit_logs (id, company_id, actor_id, action, target) values (${nid("aud")}, ${device.company_id}, ${session.userId}, 'device.deleted', ${device.imei})`;
+    return { ok: true };
+  });
+
+export const deleteMaintenance = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator(z.object({ id: z.string() }))
+  .handler(async ({ context, data }) => {
+    const { sql, session } = await ctx(context.userId);
+    if (![ "super_admin", "company_admin" ].includes(session.role)) throw new Error("Forbidden");
+    const scope = await companyScope(sql, session);
+    const row = (await sql<{ id: string; company_id: string; title: string; status: string }>`select id, company_id, title, status from maintenance_reminders where id = ${data.id}`)[0];
+    if (!row || !inScope(scope, row.company_id)) throw new Error("Maintenance reminder not found");
+    if (row.status !== "open") throw new Error("Completed maintenance records are retained as operational history.");
+    await sql`delete from maintenance_reminders where id = ${data.id}`;
+    await sql`insert into audit_logs (id, company_id, actor_id, action, target) values (${nid("aud")}, ${row.company_id}, ${session.userId}, 'maintenance.deleted', ${row.title})`;
+    return { ok: true };
+  });
+
+export const deleteReportSchedule = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator(z.object({ id: z.string() }))
+  .handler(async ({ context, data }) => {
+    const { sql, session } = await ctx(context.userId);
+    if (![ "super_admin", "company_admin" ].includes(session.role)) throw new Error("Forbidden");
+    const scope = await companyScope(sql, session);
+    const row = (await sql<{ id: string; company_id: string; kind: string; recipient: string }>`select id, company_id, kind, recipient from report_schedules where id = ${data.id}`)[0];
+    if (!row || !inScope(scope, row.company_id)) throw new Error("Schedule not found");
+    await sql`delete from report_schedules where id = ${data.id}`;
+    await sql`insert into audit_logs (id, company_id, actor_id, action, target) values (${nid("aud")}, ${row.company_id}, ${session.userId}, 'report_schedule.deleted', ${row.kind + " " + row.recipient})`;
+    return { ok: true };
+  });
