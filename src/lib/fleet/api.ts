@@ -918,6 +918,39 @@ export const logFuel = createServerFn({ method: "POST" })
     return { id };
   });
 
+export const updateFuelEvent = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator(z.object({
+    id: z.string(),
+    kind: z.enum(["fill", "drop"]),
+    litres: z.number().positive().max(2000),
+    notes: z.string().max(240).optional(),
+  }))
+  .handler(async ({ context, data }) => {
+    const { sql, session } = await ctx(context.userId);
+    if (session.role !== "super_admin" && session.role !== "company_admin") throw new Error("Forbidden");
+    const scope = await companyScope(sql, session);
+    const row = (await sql<{ company_id: string; vehicle_id: string; kind: string; litres: number; notes: string | null }>`select company_id, vehicle_id, kind, litres, notes from fuel_events where id = ${data.id}`)[0];
+    if (!row || !inScope(scope, row.company_id)) throw new Error("Fuel entry not found");
+    await sql`update fuel_events set kind = ${data.kind}, litres = ${data.litres}, notes = ${data.notes?.trim() || null} where id = ${data.id}`;
+    await sql`insert into audit_logs (id, company_id, actor_id, action, target, meta) values (${nid("aud")}, ${row.company_id}, ${session.userId}, 'fuel.updated', ${data.id}, ${JSON.stringify({ before: { kind: row.kind, litres: row.litres, notes: row.notes }, after: { kind: data.kind, litres: data.litres, notes: data.notes?.trim() || null } })}::jsonb)`;
+    return { ok: true };
+  });
+
+export const deleteFuelEvent = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator(z.object({ id: z.string() }))
+  .handler(async ({ context, data }) => {
+    const { sql, session } = await ctx(context.userId);
+    if (session.role !== "super_admin" && session.role !== "company_admin") throw new Error("Forbidden");
+    const scope = await companyScope(sql, session);
+    const row = (await sql<{ company_id: string; vehicle_id: string; kind: string; litres: number; notes: string | null }>`select company_id, vehicle_id, kind, litres, notes from fuel_events where id = ${data.id}`)[0];
+    if (!row || !inScope(scope, row.company_id)) throw new Error("Fuel entry not found");
+    await sql`insert into audit_logs (id, company_id, actor_id, action, target, meta) values (${nid("aud")}, ${row.company_id}, ${session.userId}, 'fuel.deleted', ${data.id}, ${JSON.stringify({ vehicleId: row.vehicle_id, kind: row.kind, litres: row.litres, notes: row.notes })}::jsonb)`;
+    await sql`delete from fuel_events where id = ${data.id}`;
+    return { ok: true };
+  });
+
 export const listCompanies = createServerFn({ method: "GET" })
   .middleware([authMiddleware])
   .handler(async ({ context }) => {
@@ -965,10 +998,17 @@ export const listCompanies = createServerFn({ method: "GET" })
 
 export const createCompany = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
-  .validator(z.object({ name: z.string().min(2), city: z.string().optional(), speedLimit: z.number().optional() }))
+  .validator(z.object({ id: z.string().optional(), name: z.string().min(2), city: z.string().optional(), speedLimit: z.number().optional() }))
   .handler(async ({ context, data }) => {
     const { sql, session } = await ctx(context.userId);
     if (session.realRole !== "super_admin") throw new Error("Forbidden");
+    if (data.id) {
+      const current = (await sql<{ id: string; name: string }>`select id, name from companies where id = ${data.id}`)[0];
+      if (!current) throw new Error("Company not found");
+      await sql`update companies set name = ${data.name}, city = ${data.city?.trim() || null}, default_speed_limit = ${data.speedLimit ?? 80} where id = ${data.id}`;
+      await sql`insert into audit_logs (id, company_id, actor_id, action, target, meta) values (${nid("aud")}, ${data.id}, ${session.userId}, 'company.updated', ${data.name}, ${JSON.stringify({ previousName: current.name })}::jsonb)`;
+      return { id: data.id };
+    }
     const id = nid("co");
     const slug = data.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") + "-" + id.slice(-4);
     const mark = companyMarkFromName(data.name);
@@ -976,13 +1016,9 @@ export const createCompany = createServerFn({ method: "POST" })
       insert into companies (id, name, slug, status, billing_status, default_speed_limit, city, created_by, mark)
       values (${id}, ${data.name}, ${slug}, 'active', 'trial', ${data.speedLimit ?? 80}, ${data.city ?? null}, ${session.userId}, ${mark})
     `;
-    await sql`
-      insert into audit_logs (id, company_id, actor_id, action, target)
-      values (${nid("aud")}, ${id}, ${session.userId}, 'company.created', ${data.name})
-    `;
+    await sql`insert into audit_logs (id, company_id, actor_id, action, target) values (${nid("aud")}, ${id}, ${session.userId}, 'company.created', ${data.name})`;
     return { id };
   });
-
 export const setCompanyStatus = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .validator(z.object({ companyId: z.string(), status: z.enum(["active", "suspended"]) }))
@@ -1134,31 +1170,36 @@ export const listDevices = createServerFn({ method: "GET" })
 
 export const saveDevice = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
-  .validator(
-    z.object({
-      imei: z.string().min(8),
-      protocol: z.string(),
-      decoder: z.string(),
-      companyId: z.string(),
-      vehicleId: z.string().nullable().optional(),
-    }),
-  )
+  .validator(z.object({
+    id: z.string().optional(),
+    imei: z.string().min(8),
+    protocol: z.string(),
+    decoder: z.string(),
+    companyId: z.string(),
+    vehicleId: z.string().nullable().optional(),
+  }))
   .handler(async ({ context, data }) => {
     const { sql, session } = await ctx(context.userId);
     if (!["super_admin", "field_admin", "company_admin"].includes(session.role)) throw new Error("Forbidden");
     const scope = await companyScope(sql, session);
     if (!inScope(scope, data.companyId)) throw new Error("Forbidden");
+    if (data.vehicleId) {
+      const vehicle = (await sql<{ company_id: string }>`select company_id from vehicles where id = ${data.vehicleId}`)[0];
+      if (!vehicle || vehicle.company_id !== data.companyId) throw new Error("Selected vehicle does not belong to this company");
+    }
+    const duplicate = (await sql<{ id: string }>`select id from devices where imei = ${data.imei} and (${data.id ?? ""} = '' or id <> ${data.id ?? ""}) limit 1`)[0];
+    if (duplicate) throw new Error("That IMEI is already registered to another device");
+    if (data.id) {
+      const current = (await sql<{ company_id: string | null }>`select company_id from devices where id = ${data.id}`)[0];
+      if (!current || !inScope(scope, current.company_id)) throw new Error("Device not found");
+      await sql`update devices set imei = ${data.imei}, protocol = ${data.protocol}, decoder = ${data.decoder}, company_id = ${data.companyId}, vehicle_id = ${data.vehicleId ?? null} where id = ${data.id}`;
+      await sql`insert into audit_logs (id, company_id, actor_id, action, target) values (${nid("aud")}, ${data.companyId}, ${session.userId}, 'device.updated', ${data.imei})`;
+      return { ok: true, id: data.id };
+    }
     const id = nid("dev");
-    await sql`
-      insert into devices (id, company_id, vehicle_id, imei, protocol, decoder, secret)
-      values (${id}, ${data.companyId}, ${data.vehicleId ?? null}, ${data.imei}, ${data.protocol}, ${data.decoder}, ${"sec_" + data.imei.slice(-6)})
-      on conflict (imei) do update set company_id = excluded.company_id, vehicle_id = excluded.vehicle_id, protocol = excluded.protocol, decoder = excluded.decoder
-    `;
-    await sql`
-      insert into audit_logs (id, company_id, actor_id, action, target)
-      values (${nid("aud")}, ${data.companyId}, ${session.userId}, 'device.registered', ${data.imei})
-    `;
-    return { ok: true };
+    await sql`insert into devices (id, company_id, vehicle_id, imei, protocol, decoder, secret) values (${id}, ${data.companyId}, ${data.vehicleId ?? null}, ${data.imei}, ${data.protocol}, ${data.decoder}, ${"sec_" + data.imei.slice(-6)})`;
+    await sql`insert into audit_logs (id, company_id, actor_id, action, target) values (${nid("aud")}, ${data.companyId}, ${session.userId}, 'device.registered', ${data.imei})`;
+    return { ok: true, id };
   });
 
 export const assignDevice = createServerFn({ method: "POST" })
@@ -1352,12 +1393,13 @@ export const saveGeofence = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .validator(
     z.object({
+      id: z.string().optional(),
       name: z.string().min(2).max(80),
       kind: z.enum(["circle", "polygon", "route"]),
       zoneType: z.enum(["allowed", "forbidden"]),
       groupName: z.string().max(48).optional(),
       geometry: fenceGeometry,
-      schedule: fenceSchedule.optional(),
+      schedule: fenceSchedule.nullable().optional(),
     }),
   )
   .handler(async ({ context, data }) => {
@@ -1366,26 +1408,28 @@ export const saveGeofence = createServerFn({ method: "POST" })
     const companyId = session.companyId;
     if (!companyId) throw new Error("View as a company admin before drawing fences");
     if (data.geometry.type !== data.kind) throw new Error("Geometry does not match kind");
-    const id = nid("gf");
+    const id = data.id ?? nid("gf");
     const schedule = data.schedule ?? null;
-    await sql`
-      insert into geofences (id, company_id, name, kind, group_name, zone_type, geometry, schedule, active)
-      values (
-        ${id},
-        ${companyId},
-        ${data.name},
-        ${data.kind},
-        ${data.groupName?.trim() || null},
-        ${data.zoneType},
-        ${JSON.stringify(data.geometry)}::jsonb,
-        ${schedule ? JSON.stringify(schedule) : null}::jsonb,
-        true
-      )
-    `;
-    await sql`
-      insert into audit_logs (id, company_id, actor_id, action, target)
-      values (${nid("aud")}, ${companyId}, ${session.userId}, 'geofence.created', ${data.name})
-    `;
+    if (data.id) {
+      const current = (await sql<{ company_id: string; name: string }>`select company_id, name from geofences where id = ${data.id}`)[0];
+      if (!current || !inScope(await companyScope(sql, session), current.company_id)) throw new Error("Geofence not found");
+      await sql`
+        update geofences
+        set name = ${data.name}, kind = ${data.kind}, group_name = ${data.groupName?.trim() || null},
+          zone_type = ${data.zoneType}, geometry = ${JSON.stringify(data.geometry)}::jsonb,
+          schedule = ${schedule ? JSON.stringify(schedule) : null}::jsonb
+        where id = ${data.id}
+      `;
+      await sql`insert into audit_logs (id, company_id, actor_id, action, target) values (${nid("aud")}, ${current.company_id}, ${session.userId}, 'geofence.updated', ${data.name})`;
+    } else {
+      await sql`
+        insert into geofences (id, company_id, name, kind, group_name, zone_type, geometry, schedule, active)
+        values (${id}, ${companyId}, ${data.name}, ${data.kind}, ${data.groupName?.trim() || null},
+          ${data.zoneType}, ${JSON.stringify(data.geometry)}::jsonb,
+          ${schedule ? JSON.stringify(schedule) : null}::jsonb, true)
+      `;
+      await sql`insert into audit_logs (id, company_id, actor_id, action, target) values (${nid("aud")}, ${companyId}, ${session.userId}, 'geofence.created', ${data.name})`;
+    }
     return { id };
   });
 
@@ -1411,9 +1455,12 @@ export const deleteGeofence = createServerFn({ method: "POST" })
   .validator(z.object({ id: z.string() }))
   .handler(async ({ context, data }) => {
     const { sql, session } = await ctx(context.userId);
+    if (!["super_admin", "company_admin"].includes(session.role)) throw new Error("Forbidden");
     const scope = await companyScope(sql, session);
     const row = (await sql<{ company_id: string; name: string }>`select company_id, name from geofences where id = ${data.id}`)[0];
     if (!row || !inScope(scope, row.company_id)) throw new Error("Not found");
+    const events = await sql<{ n: number }>`select count(*)::int as n from geofence_events where geofence_id = ${data.id}`;
+    if ((events[0]?.n ?? 0) > 0) throw new Error("This geofence has event history. Pause it instead of deleting it.");
     await sql`delete from geofences where id = ${data.id}`;
     await sql`
       insert into audit_logs (id, company_id, actor_id, action, target)
@@ -1870,16 +1917,26 @@ export const listDrivers = createServerFn({ method: "GET" })
 
 export const saveDriver = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
-  .validator(z.object({ name: z.string().min(2), licenseNo: z.string().optional(), phone: z.string().optional() }))
+  .validator(z.object({ id: z.string().optional(), name: z.string().min(2), licenseNo: z.string().optional(), phone: z.string().optional() }))
   .handler(async ({ context, data }) => {
     const { sql, session } = await ctx(context.userId);
     if (!["super_admin", "company_admin"].includes(session.role)) throw new Error("Forbidden");
     const companyId = session.companyId;
-    if (!companyId) throw new Error("Select a company first");
-    await sql`
-      insert into drivers (id, company_id, name, license_no, phone)
-      values (${nid("drv")}, ${companyId}, ${data.name}, ${data.licenseNo ?? null}, ${data.phone ?? null})
-    `;
+    if (data.id) {
+      const scope = await companyScope(sql, session);
+      const current = (await sql<{ company_id: string; name: string }>`select company_id, name from drivers where id = ${data.id}`)[0];
+      if (!current || !inScope(scope, current.company_id)) throw new Error("Driver not found");
+      await sql`update drivers set name = ${data.name}, license_no = ${data.licenseNo ?? null}, phone = ${data.phone ?? null} where id = ${data.id}`;
+      await sql`insert into audit_logs (id, company_id, actor_id, action, target) values (${nid("aud")}, ${current.company_id}, ${session.userId}, 'driver.updated', ${data.name})`;
+    } else {
+      if (!companyId) throw new Error("Select a company first");
+      const id = nid("drv");
+      await sql`
+        insert into drivers (id, company_id, name, license_no, phone)
+        values (${id}, ${companyId}, ${data.name}, ${data.licenseNo ?? null}, ${data.phone ?? null})
+      `;
+      await sql`insert into audit_logs (id, company_id, actor_id, action, target) values (${nid("aud")}, ${companyId}, ${session.userId}, 'driver.created', ${data.name})`;
+    }
     return { ok: true };
   });
 
@@ -1992,6 +2049,7 @@ export const saveDocument = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .validator(
     z.object({
+      id: z.string().optional(),
       vehicleId: z.string(),
       title: z.string().min(2).max(120),
       kind: z.enum(["insurance", "registration", "permit", "service"]),
@@ -2002,22 +2060,33 @@ export const saveDocument = createServerFn({ method: "POST" })
     const { sql, session } = await ctx(context.userId);
     if (!["super_admin", "company_admin"].includes(session.role)) throw new Error("Forbidden");
     const scope = await companyScope(sql, session);
-    const vehicle = (
-      await sql<{ id: string; company_id: string; plate: string }>`
-        select id, company_id, plate from vehicles where id = ${data.vehicleId}
-      `
-    )[0];
+    const vehicle = (await sql<{ id: string; company_id: string; plate: string }>`select id, company_id, plate from vehicles where id = ${data.vehicleId}`)[0];
     if (!vehicle || !inScope(scope, vehicle.company_id)) throw new Error("Not found");
+    if (data.id) {
+      const current = (await sql<{ company_id: string; title: string }>`select company_id, title from documents where id = ${data.id}`)[0];
+      if (!current || !inScope(scope, current.company_id)) throw new Error("Document not found");
+      await sql`update documents set vehicle_id = ${vehicle.id}, company_id = ${vehicle.company_id}, title = ${data.title}, kind = ${data.kind}, expires_on = ${data.expiresOn ?? null} where id = ${data.id}`;
+      await sql`insert into audit_logs (id, company_id, actor_id, action, target) values (${nid("aud")}, ${vehicle.company_id}, ${session.userId}, 'document.updated', ${`${vehicle.plate} ${data.title}`})`;
+      return { id: data.id };
+    }
     const id = nid("doc");
-    await sql`
-      insert into documents (id, company_id, vehicle_id, title, kind, path, expires_on)
-      values (${id}, ${vehicle.company_id}, ${vehicle.id}, ${data.title}, ${data.kind}, ${"/media/document.svg"}, ${data.expiresOn ?? null})
-    `;
-    await sql`
-      insert into audit_logs (id, company_id, actor_id, action, target)
-      values (${nid("aud")}, ${vehicle.company_id}, ${session.userId}, 'document.filed', ${`${vehicle.plate} ${data.title}`})
-    `;
+    await sql`insert into documents (id, company_id, vehicle_id, title, kind, path, expires_on) values (${id}, ${vehicle.company_id}, ${vehicle.id}, ${data.title}, ${data.kind}, ${"/media/document.svg"}, ${data.expiresOn ?? null})`;
+    await sql`insert into audit_logs (id, company_id, actor_id, action, target) values (${nid("aud")}, ${vehicle.company_id}, ${session.userId}, 'document.filed', ${`${vehicle.plate} ${data.title}`})`;
     return { id };
+  });
+
+export const deleteDocument = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator(z.object({ id: z.string() }))
+  .handler(async ({ context, data }) => {
+    const { sql, session } = await ctx(context.userId);
+    if (!["super_admin", "company_admin"].includes(session.role)) throw new Error("Forbidden");
+    const scope = await companyScope(sql, session);
+    const row = (await sql<{ company_id: string; title: string }>`select company_id, title from documents where id = ${data.id}`)[0];
+    if (!row || !inScope(scope, row.company_id)) throw new Error("Document not found");
+    await sql`delete from documents where id = ${data.id}`;
+    await sql`insert into audit_logs (id, company_id, actor_id, action, target) values (${nid("aud")}, ${row.company_id}, ${session.userId}, 'document.deleted', ${row.title})`;
+    return { ok: true };
   });
 
 export const listMaintenance = createServerFn({ method: "GET" })
@@ -2065,44 +2134,36 @@ export const listMaintenance = createServerFn({ method: "GET" })
 
 export const saveMaintenance = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
-  .validator(
-    z.object({
-      vehicleId: z.string(),
-      title: z.string().min(2).max(120),
-      dueOdometer: z.number().positive().optional(),
-      dueHours: z.number().positive().optional(),
-      dueDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
-      notes: z.string().max(240).optional(),
-    }),
-  )
+  .validator(z.object({
+    id: z.string().optional(),
+    vehicleId: z.string(),
+    title: z.string().min(2).max(120),
+    dueOdometer: z.number().positive().optional(),
+    dueHours: z.number().positive().optional(),
+    dueDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    notes: z.string().max(240).optional(),
+  }))
   .handler(async ({ context, data }) => {
     const { sql, session } = await ctx(context.userId);
     if (!["super_admin", "company_admin"].includes(session.role)) throw new Error("Forbidden");
-    if (data.dueOdometer == null && data.dueHours == null && !data.dueDate) {
-      throw new Error("Set a due date, odometer, or engine hours");
-    }
+    if (data.dueOdometer == null && data.dueHours == null && !data.dueDate) throw new Error("Set a due date, odometer, or engine hours");
     const scope = await companyScope(sql, session);
-    const vehicle = (
-      await sql<{ id: string; company_id: string; plate: string }>`
-        select id, company_id, plate from vehicles where id = ${data.vehicleId}
-      `
-    )[0];
+    const vehicle = (await sql<{ id: string; company_id: string; plate: string }>`select id, company_id, plate from vehicles where id = ${data.vehicleId}`)[0];
     if (!vehicle || !inScope(scope, vehicle.company_id)) throw new Error("Not found");
+    if (data.id) {
+      const current = (await sql<{ company_id: string; status: string }>`select company_id, status from maintenance_reminders where id = ${data.id}`)[0];
+      if (!current || !inScope(scope, current.company_id)) throw new Error("Reminder not found");
+      if (current.status !== "open") throw new Error("Completed maintenance records cannot be edited.");
+      await sql`update maintenance_reminders set vehicle_id = ${vehicle.id}, company_id = ${vehicle.company_id}, title = ${data.title}, due_odometer = ${data.dueOdometer ?? null}, due_hours = ${data.dueHours ?? null}, due_date = ${data.dueDate ?? null}, notes = ${data.notes ?? null} where id = ${data.id}`;
+      await sql`insert into audit_logs (id, company_id, actor_id, action, target) values (${nid("aud")}, ${vehicle.company_id}, ${session.userId}, 'maintenance.updated', ${`${vehicle.plate} ${data.title}`})`;
+      return { id: data.id };
+    }
     const id = nid("mn");
-    await sql`
-      insert into maintenance_reminders (id, company_id, vehicle_id, title, due_odometer, due_hours, due_date, status, notes)
-      values (
-        ${id}, ${vehicle.company_id}, ${vehicle.id}, ${data.title},
-        ${data.dueOdometer ?? null}, ${data.dueHours ?? null}, ${data.dueDate ?? null}, 'open', ${data.notes ?? null}
-      )
-    `;
-    await sql`
-      insert into audit_logs (id, company_id, actor_id, action, target)
-      values (${nid("aud")}, ${vehicle.company_id}, ${session.userId}, 'maintenance.created', ${`${vehicle.plate} ${data.title}`})
-    `;
+    await sql`insert into maintenance_reminders (id, company_id, vehicle_id, title, due_odometer, due_hours, due_date, status, notes)
+      values (${id}, ${vehicle.company_id}, ${vehicle.id}, ${data.title}, ${data.dueOdometer ?? null}, ${data.dueHours ?? null}, ${data.dueDate ?? null}, 'open', ${data.notes ?? null})`;
+    await sql`insert into audit_logs (id, company_id, actor_id, action, target) values (${nid("aud")}, ${vehicle.company_id}, ${session.userId}, 'maintenance.created', ${`${vehicle.plate} ${data.title}`})`;
     return { id };
   });
-
 export const completeMaintenance = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .validator(z.object({ id: z.string() }))
@@ -2253,7 +2314,8 @@ export const listTeam = createServerFn({ method: "GET" })
       name: string | null;
       email: string | null;
       created_at: string;
-    }>`select user_id, role, company_id, name, email, created_at from profiles order by created_at`;
+      active: boolean;
+    }>`select user_id, role, company_id, name, email, created_at, active from profiles order by created_at`;
     const invites = await sql<{
       id: string;
       email: string;
@@ -2293,6 +2355,20 @@ export const inviteUser = createServerFn({ method: "POST" })
       insert into audit_logs (id, company_id, actor_id, action, target)
       values (${nid("aud")}, ${companyId}, ${session.userId}, 'user.invited', ${data.email})
     `;
+    return { ok: true };
+  });
+
+export const revokeInvite = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator(z.object({ id: z.string() }))
+  .handler(async ({ context, data }) => {
+    const { sql, session } = await ctx(context.userId);
+    const row = (await sql<{ id: string; email: string; company_id: string | null }>`select id, email, company_id from invites where id = ${data.id}`)[0];
+    const scope = await companyScope(sql, session);
+    if (!row || (session.realRole !== "super_admin" && !inScope(scope, row.company_id))) throw new Error("Invite not found");
+    if (session.realRole !== "super_admin" && session.role !== "company_admin") throw new Error("Forbidden");
+    await sql`delete from invites where id = ${data.id}`;
+    await sql`insert into audit_logs (id, company_id, actor_id, action, target) values (${nid("aud")}, ${row.company_id}, ${session.userId}, 'user.invite_revoked', ${row.email})`;
     return { ok: true };
   });
 
@@ -3077,6 +3153,7 @@ export const saveReportSchedule = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .validator(
     z.object({
+      id: z.string().optional(),
       companyId: z.string(),
       kind: z.enum(["trips", "fuel", "offline", "speeding", "stops"]),
       cadence: z.enum(["daily", "weekly"]),
@@ -3090,16 +3167,20 @@ export const saveReportSchedule = createServerFn({ method: "POST" })
     if (!inScope(scope, data.companyId)) throw new Error("Forbidden");
     const company = (await sql<{ id: string }>`select id from companies where id = ${data.companyId}`)[0];
     if (!company) throw new Error("Company not found");
-    const id = nid("sch");
     const next = new Date(Date.now() + (data.cadence === "weekly" ? 7 : 1) * 86400000).toISOString();
+    if (data.id) {
+      const current = (await sql<{ company_id: string }>`select company_id from report_schedules where id = ${data.id}`)[0];
+      if (!current || !inScope(scope, current.company_id)) throw new Error("Schedule not found");
+      await sql`update report_schedules set company_id = ${data.companyId}, kind = ${data.kind}, cadence = ${data.cadence}, recipient = ${data.recipient}, next_run = ${next} where id = ${data.id}`;
+      await sql`insert into audit_logs (id, company_id, actor_id, action, target) values (${nid("aud")}, ${data.companyId}, ${session.userId}, 'report_schedule.updated', ${`${data.cadence} ${data.kind} ${data.recipient}`})`;
+      return { id: data.id };
+    }
+    const id = nid("sch");
     await sql`
       insert into report_schedules (id, company_id, kind, cadence, recipient, enabled, next_run, created_by)
       values (${id}, ${data.companyId}, ${data.kind}, ${data.cadence}, ${data.recipient}, true, ${next}, ${session.userId})
     `;
-    await sql`
-      insert into audit_logs (id, company_id, actor_id, action, target)
-      values (${nid("aud")}, ${data.companyId}, ${session.userId}, 'report.scheduled', ${`${data.cadence} ${data.kind}`})
-    `;
+    await sql`insert into audit_logs (id, company_id, actor_id, action, target) values (${nid("aud")}, ${data.companyId}, ${session.userId}, 'report.scheduled', ${`${data.cadence} ${data.kind}`})`;
     return { id };
   });
 
@@ -3198,5 +3279,150 @@ export const setLandingSettings = createServerFn({ method: "POST" })
         on conflict (key) do update set value = excluded.value, updated_at = excluded.updated_at, updated_by = excluded.updated_by
       `;
     }
+    return { ok: true };
+  });
+
+
+// Safe removal actions for manually created fleet records. Historical telemetry,
+// assignments, calibrations, and completed maintenance are deliberately retained.
+export const deleteVehicle = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator(z.object({ id: z.string() }))
+  .handler(async ({ context, data }) => {
+    const { sql, session } = await ctx(context.userId);
+    if (![ "super_admin", "company_admin" ].includes(session.role)) throw new Error("Forbidden");
+    const scope = await companyScope(sql, session);
+    const vehicle = (await sql<{ id: string; company_id: string; plate: string }>`select id, company_id, plate from vehicles where id = ${data.id}`)[0];
+    if (!vehicle || !inScope(scope, vehicle.company_id)) throw new Error("Vehicle not found");
+    const history = await sql<{ n: number }>`
+      select (
+        (select count(*) from positions where vehicle_id = ${data.id}) +
+        (select count(*) from trips where vehicle_id = ${data.id}) +
+        (select count(*) from stops where vehicle_id = ${data.id}) +
+        (select count(*) from fuel_events where vehicle_id = ${data.id}) +
+        (select count(*) from alerts where vehicle_id = ${data.id}) +
+        (select count(*) from maintenance_reminders where vehicle_id = ${data.id}) +
+        (select count(*) from documents where vehicle_id = ${data.id}) +
+        (select count(*) from media_files where vehicle_id = ${data.id}) +
+        (select count(*) from driver_assignments where vehicle_id = ${data.id}) +
+        (select count(*) from behavior_events where vehicle_id = ${data.id}) +
+        (select count(*) from device_commands where vehicle_id = ${data.id})
+      )::int as n
+    `;
+    if ((history[0]?.n ?? 0) > 0) throw new Error("This vehicle has operational history. Keep it in the fleet register; historical records must not be deleted.");
+    await sql`update devices set vehicle_id = null where vehicle_id = ${data.id}`;
+    await sql`delete from vehicles where id = ${data.id} and company_id = ${vehicle.company_id}`;
+    await sql`insert into audit_logs (id, company_id, actor_id, action, target) values (${nid("aud")}, ${vehicle.company_id}, ${session.userId}, 'vehicle.deleted', ${vehicle.plate})`;
+    return { ok: true };
+  });
+
+export const deleteDriver = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator(z.object({ id: z.string() }))
+  .handler(async ({ context, data }) => {
+    const { sql, session } = await ctx(context.userId);
+    if (![ "super_admin", "company_admin" ].includes(session.role)) throw new Error("Forbidden");
+    const scope = await companyScope(sql, session);
+    const driver = (await sql<{ id: string; company_id: string; name: string }>`select id, company_id, name from drivers where id = ${data.id}`)[0];
+    if (!driver || !inScope(scope, driver.company_id)) throw new Error("Driver not found");
+    const protectedHistory = await sql<{ assignments: number; events: number }>`
+      select
+        (select count(*)::int from driver_assignments where driver_id = ${data.id}) as assignments,
+        (select count(*)::int from behavior_events where driver_id = ${data.id}) as events
+    `;
+    if ((protectedHistory[0]?.assignments ?? 0) > 0 || (protectedHistory[0]?.events ?? 0) > 0) {
+      throw new Error("This driver has assignment or behaviour history. Keep the record to preserve the audit trail.");
+    }
+    await sql`update vehicles set assigned_driver_id = null where assigned_driver_id = ${data.id}`;
+    await sql`delete from drivers where id = ${data.id} and company_id = ${driver.company_id}`;
+    await sql`insert into audit_logs (id, company_id, actor_id, action, target) values (${nid("aud")}, ${driver.company_id}, ${session.userId}, 'driver.deleted', ${driver.name})`;
+    return { ok: true };
+  });
+
+export const deleteDevice = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator(z.object({ id: z.string() }))
+  .handler(async ({ context, data }) => {
+    const { sql, session } = await ctx(context.userId);
+    if (![ "super_admin", "field_admin", "company_admin" ].includes(session.role)) throw new Error("Forbidden");
+    const scope = await companyScope(sql, session);
+    const device = (await sql<{ id: string; company_id: string | null; imei: string; last_seen: string | null }>`select id, company_id, imei, last_seen from devices where id = ${data.id}`)[0];
+    if (!device || !inScope(scope, device.company_id)) throw new Error("Device not found");
+    const protectedRows = await sql<{ calibrations: number; commands: number }>`
+      select
+        (select count(*)::int from device_calibrations where device_id = ${data.id}) as calibrations,
+        (select count(*)::int from device_commands where device_id = ${data.id}) as commands
+    `;
+    if (device.last_seen || (protectedRows[0]?.calibrations ?? 0) > 0 || (protectedRows[0]?.commands ?? 0) > 0) {
+      throw new Error("This device has been used or has calibration/command history. Unassign it or replace it; its record is retained for audit purposes.");
+    }
+    await sql`delete from devices where id = ${data.id}`;
+    await sql`insert into audit_logs (id, company_id, actor_id, action, target) values (${nid("aud")}, ${device.company_id}, ${session.userId}, 'device.deleted', ${device.imei})`;
+    return { ok: true };
+  });
+
+export const deleteMaintenance = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator(z.object({ id: z.string() }))
+  .handler(async ({ context, data }) => {
+    const { sql, session } = await ctx(context.userId);
+    if (![ "super_admin", "company_admin" ].includes(session.role)) throw new Error("Forbidden");
+    const scope = await companyScope(sql, session);
+    const row = (await sql<{ id: string; company_id: string; title: string; status: string }>`select id, company_id, title, status from maintenance_reminders where id = ${data.id}`)[0];
+    if (!row || !inScope(scope, row.company_id)) throw new Error("Maintenance reminder not found");
+    if (row.status !== "open") throw new Error("Completed maintenance records are retained as operational history.");
+    await sql`delete from maintenance_reminders where id = ${data.id}`;
+    await sql`insert into audit_logs (id, company_id, actor_id, action, target) values (${nid("aud")}, ${row.company_id}, ${session.userId}, 'maintenance.deleted', ${row.title})`;
+    return { ok: true };
+  });
+
+export const deleteReportSchedule = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator(z.object({ id: z.string() }))
+  .handler(async ({ context, data }) => {
+    const { sql, session } = await ctx(context.userId);
+    if (![ "super_admin", "company_admin" ].includes(session.role)) throw new Error("Forbidden");
+    const scope = await companyScope(sql, session);
+    const row = (await sql<{ id: string; company_id: string; kind: string; recipient: string }>`select id, company_id, kind, recipient from report_schedules where id = ${data.id}`)[0];
+    if (!row || !inScope(scope, row.company_id)) throw new Error("Schedule not found");
+    await sql`delete from report_schedules where id = ${data.id}`;
+    await sql`insert into audit_logs (id, company_id, actor_id, action, target) values (${nid("aud")}, ${row.company_id}, ${session.userId}, 'report_schedule.deleted', ${row.kind + " " + row.recipient})`;
+    return { ok: true };
+  });
+
+
+export const setUserActive = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator(z.object({ userId: z.string(), active: z.boolean() }))
+  .handler(async ({ context, data }) => {
+    const { sql, session } = await ctx(context.userId);
+    if (session.realRole !== "super_admin") throw new Error("Forbidden");
+    if (data.userId === session.userId) throw new Error("You cannot deactivate your own account.");
+    const target = (await sql<{ role: string; email: string | null }>`select role, email from profiles where user_id = ${data.userId}`)[0];
+    if (!target) throw new Error("User not found");
+    if (target.role === "super_admin") throw new Error("Platform administrator accounts are protected.");
+    await sql`update profiles set active = ${data.active} where user_id = ${data.userId}`;
+    await sql`delete from view_overrides where user_id = ${data.userId}`;
+    await sql`insert into audit_logs (id, actor_id, action, target) values (${nid("aud")}, ${session.userId}, ${data.active ? "user.activated" : "user.deactivated"}, ${target.email ?? data.userId})`;
+    return { ok: true };
+  });
+
+export const updateUserRole = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator(z.object({ userId: z.string(), role: z.enum(["field_admin", "company_admin", "tracker", "accounts", "pending"]) }))
+  .handler(async ({ context, data }) => {
+    const { sql, session } = await ctx(context.userId);
+    if (session.realRole !== "super_admin") throw new Error("Forbidden");
+    if (data.userId === session.userId) throw new Error("You cannot change your own role here.");
+    const target = (await sql<{ role: string; email: string | null; company_id: string | null }>`select role, email, company_id from profiles where user_id = ${data.userId}`)[0];
+    if (!target) throw new Error("User not found");
+    if (target.role === "super_admin") throw new Error("Platform administrator roles are protected.");
+    await sql`update profiles set role = ${data.role} where user_id = ${data.userId}`;
+    if (data.role === "field_admin") {
+      await sql`insert into field_assignments (user_id, company_id) select ${data.userId}, id from companies on conflict do nothing`;
+    } else {
+      await sql`delete from field_assignments where user_id = ${data.userId}`;
+    }
+    await sql`insert into audit_logs (id, company_id, actor_id, action, target, meta) values (${nid("aud")}, ${target.company_id}, ${session.userId}, 'user.role_updated', ${target.email ?? data.userId}, ${JSON.stringify({ from: target.role, to: data.role })}::jsonb)`;
     return { ok: true };
   });

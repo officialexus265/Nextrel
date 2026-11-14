@@ -2,7 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { toast } from "sonner";
-import { assignDevice, filePacket, getAppSession, listCalibrations, listCompanies, listDevices, listIngestJournal, listVehicles, queueDeviceCommand, saveCalibration, saveDevice } from "@/lib/fleet/api";
+import { assignDevice, deleteDevice, filePacket, getAppSession, listCalibrations, listCompanies, listDevices, listIngestJournal, listVehicles, queueDeviceCommand, saveCalibration, saveDevice } from "@/lib/fleet/api";
 import { DECODER_NAMES, decode, samplePacket, type DecoderName, type NormalizedFix } from "@/lib/fleet/decoders";
 import { commandLabel } from "@/lib/fleet/labels";
 import { PageHeader } from "@/components/layout/app-shell";
@@ -23,6 +23,7 @@ function DevicesPage() {
   const vehicles = useQuery({ queryKey: ["vehicles"], queryFn: () => listVehicles() });
   const companies = useQuery({ queryKey: ["companies"], queryFn: () => listCompanies(), retry: false });
   const [open, setOpen] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [imei, setImei] = useState("");
   const [protocol, setProtocol] = useState("HTTP");
   const [decoder, setDecoder] = useState("generic_http");
@@ -32,11 +33,26 @@ function DevicesPage() {
   const mut = useMutation({
     mutationFn: () =>
       saveDevice({
-        data: { imei, protocol, decoder, companyId: companyId || (companies.data?.[0]?.id ?? ""), vehicleId: vehicleId || null },
+        data: { id: editingId ?? undefined, imei, protocol, decoder, companyId: companyId || (companies.data?.[0]?.id ?? ""), vehicleId: vehicleId || null },
       }),
     onSuccess: () => {
-      toast.success("Device registered");
+      toast.success(editingId ? "Device updated" : "Device registered");
       setOpen(false);
+      setEditingId(null);
+      setImei("");
+      setProtocol("HTTP");
+      setDecoder("generic_http");
+      setCompanyId("");
+      setVehicleId("");
+      qc.invalidateQueries({ queryKey: ["devices"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const remove = useMutation({
+    mutationFn: (id: string) => deleteDevice({ data: { id } }),
+    onSuccess: () => {
+      toast.success("Device removed");
       qc.invalidateQueries({ queryKey: ["devices"] });
     },
     onError: (e: Error) => toast.error(e.message),
@@ -50,9 +66,16 @@ function DevicesPage() {
         actions={
           <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
-              <Button size="sm">Register device</Button>
+              <Button size="sm" onClick={() => {
+                setEditingId(null);
+                setImei("");
+                setProtocol("HTTP");
+                setDecoder("generic_http");
+                setCompanyId("");
+                setVehicleId("");
+              }}>Register device</Button>
             </DialogTrigger>
-            <DialogContent title="Register device">
+            <DialogContent title={editingId ? "Edit device" : "Register device"}>
               <form
                 className="space-y-3"
                 onSubmit={(e) => {
@@ -89,7 +112,7 @@ function DevicesPage() {
                     {(vehicles.data ?? []).map((v) => <option key={v.id} value={v.id}>{v.plate} — {v.name}</option>)}
                   </select>
                 </div>
-                <Button className="w-full" type="submit" disabled={mut.isPending}>Save</Button>
+                <Button className="w-full" type="submit" disabled={mut.isPending}>{editingId ? "Save changes" : "Register device"}</Button>
               </form>
             </DialogContent>
           </Dialog>
@@ -118,6 +141,17 @@ function DevicesPage() {
                 <td className="tabular px-2 py-2">{d.battery != null ? `${Math.round(d.battery)}%` : "—"}</td>
                 <td className="px-2 py-2">
                   <div className="flex flex-col items-start gap-1">
+                    {(session.data?.role === "super_admin" || session.data?.role === "field_admin" || session.data?.role === "company_admin") && (
+                      <Button size="sm" variant="secondary" onClick={() => {
+                        setEditingId(d.id);
+                        setImei(d.imei);
+                        setProtocol(d.protocol);
+                        setDecoder(d.decoder);
+                        setCompanyId(d.companyId ?? "");
+                        setVehicleId(d.vehicleId ?? "");
+                        setOpen(true);
+                      }}>Edit</Button>
+                    )}
                     <CalibrateButton deviceId={d.id} count={d.calibrationCount} />
                     <CommandButtons
                       deviceId={d.id}
@@ -125,6 +159,11 @@ function DevicesPage() {
                       lastKind={d.lastCommandKind}
                       lastStatus={d.lastCommandStatus}
                     />
+                    {(session.data?.role === "super_admin" || session.data?.role === "field_admin" || session.data?.role === "company_admin") && (
+                      <Button size="sm" variant="ghost" disabled={remove.isPending} onClick={() => {
+                        if (window.confirm(`Remove device ${d.imei}? devices that have reported data or have calibration/command history are retained.`)) remove.mutate(d.id);
+                      }}>Delete</Button>
+                    )}
                   </div>
                   <select
                     className="mt-1 h-8 w-40 rounded-[var(--radius-xs)] border border-border bg-surface-2 px-2 text-xs"

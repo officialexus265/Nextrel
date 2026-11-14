@@ -24,10 +24,12 @@ export async function bootstrapSession(sql: Sql, userId: string): Promise<Sessio
   const auth = authUsers[0] ?? { id: userId, name: null, email: null };
 
   let profile = (
-    await sql<{ role: string; company_id: string | null; name: string | null; email: string | null }>`
-      select role, company_id, name, email from profiles where user_id = ${userId}
+    await sql<{ role: string; company_id: string | null; name: string | null; email: string | null; active: boolean }>`
+      select role, company_id, name, email, active from profiles where user_id = ${userId}
     `
   )[0];
+
+  if (profile && !profile.active) throw new Error("This account has been deactivated. Contact your platform administrator.");
 
   if (!profile) {
     const superCount = await sql<{ n: number }>`select count(*)::int as n from profiles where role = 'super_admin'`;
@@ -62,7 +64,7 @@ export async function bootstrapSession(sql: Sql, userId: string): Promise<Sessio
       insert into audit_logs (id, company_id, actor_id, action, target)
       values (${nid("aud")}, ${companyId}, ${userId}, 'user.joined', ${role})
     `;
-    profile = { role, company_id: companyId, name: auth.name, email: auth.email };
+    profile = { role, company_id: companyId, name: auth.name, email: auth.email, active: true };
   }
 
   if (profile.role === "super_admin") {

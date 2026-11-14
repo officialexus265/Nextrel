@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { toast } from "sonner";
-import { assignDriver, listDrivers, listVehicles, saveDriver } from "@/lib/fleet/api";
+import { assignDriver, deleteDriver, listDrivers, listVehicles, saveDriver } from "@/lib/fleet/api";
 import { behaviorLabel } from "@/lib/fleet/labels";
 import { PageHeader } from "@/components/layout/app-shell";
 import { Button } from "@/components/ui/button";
@@ -17,14 +17,16 @@ function DriversPage() {
   const q = useQuery({ queryKey: ["drivers"], queryFn: () => listDrivers() });
   const vehicles = useQuery({ queryKey: ["vehicles"], queryFn: () => listVehicles() });
   const [open, setOpen] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [licenseNo, setLicense] = useState("");
   const [phone, setPhone] = useState("");
   const mut = useMutation({
-    mutationFn: () => saveDriver({ data: { name, licenseNo, phone } }),
+    mutationFn: () => saveDriver({ data: { id: editingId ?? undefined, name, licenseNo, phone } }),
     onSuccess: () => {
-      toast.success("Driver added");
+      toast.success(editingId ? "Driver updated" : "Driver added");
       setOpen(false);
+      setEditingId(null);
       setName("");
       setLicense("");
       setPhone("");
@@ -43,6 +45,16 @@ function DriversPage() {
     onError: (e: Error) => toast.error(e.message),
   });
 
+  const remove = useMutation({
+    mutationFn: (id: string) => deleteDriver({ data: { id } }),
+    onSuccess: () => {
+      toast.success("Driver removed");
+      qc.invalidateQueries({ queryKey: ["drivers"] });
+      qc.invalidateQueries({ queryKey: ["vehicles"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
   const units = vehicles.data ?? [];
 
   return (
@@ -55,7 +67,7 @@ function DriversPage() {
             <DialogTrigger asChild>
               <Button size="sm">Add driver</Button>
             </DialogTrigger>
-            <DialogContent title="New driver">
+            <DialogContent title={editingId ? "Edit driver" : "New driver"}>
               <form
                 className="space-y-3"
                 onSubmit={(e) => {
@@ -66,7 +78,7 @@ function DriversPage() {
                 <div className="space-y-1"><Label>Name</Label><Input required value={name} onChange={(e) => setName(e.target.value)} /></div>
                 <div className="space-y-1"><Label>Licence</Label><Input value={licenseNo} onChange={(e) => setLicense(e.target.value)} /></div>
                 <div className="space-y-1"><Label>Phone</Label><Input value={phone} onChange={(e) => setPhone(e.target.value)} /></div>
-                <Button className="w-full" type="submit" disabled={mut.isPending}>Save</Button>
+                <Button className="w-full" type="submit" disabled={mut.isPending}>{editingId ? "Save changes" : "Save"}</Button>
               </form>
             </DialogContent>
           </Dialog>
@@ -88,6 +100,18 @@ function DriversPage() {
                     : "No harsh events this week"}
                   {d.lastBehavior ? ` · last ${behaviorLabel(d.lastBehavior).toLowerCase()}` : ""}
                 </p>
+              </div>
+              <div className="flex flex-wrap gap-2 sm:col-span-2">
+                <Button size="sm" variant="secondary" onClick={() => {
+                  setEditingId(d.id);
+                  setName(d.name);
+                  setLicense(d.licenseNo ?? "");
+                  setPhone(d.phone ?? "");
+                  setOpen(true);
+                }}>Edit</Button>
+                <Button size="sm" variant="ghost" disabled={remove.isPending} onClick={() => {
+                  if (window.confirm(`Remove driver "${d.name}"? Assignment history is protected.`)) remove.mutate(d.id);
+                }}>Delete</Button>
               </div>
               <label className="text-xs text-subtle">
                 Assigned unit
