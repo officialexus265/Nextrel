@@ -965,10 +965,17 @@ export const listCompanies = createServerFn({ method: "GET" })
 
 export const createCompany = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
-  .validator(z.object({ name: z.string().min(2), city: z.string().optional(), speedLimit: z.number().optional() }))
+  .validator(z.object({ id: z.string().optional(), name: z.string().min(2), city: z.string().optional(), speedLimit: z.number().optional() }))
   .handler(async ({ context, data }) => {
     const { sql, session } = await ctx(context.userId);
     if (session.realRole !== "super_admin") throw new Error("Forbidden");
+    if (data.id) {
+      const current = (await sql<{ id: string; name: string }>`select id, name from companies where id = ${data.id}`)[0];
+      if (!current) throw new Error("Company not found");
+      await sql`update companies set name = ${data.name}, city = ${data.city?.trim() || null}, default_speed_limit = ${data.speedLimit ?? 80} where id = ${data.id}`;
+      await sql`insert into audit_logs (id, company_id, actor_id, action, target, meta) values (${nid("aud")}, ${data.id}, ${session.userId}, 'company.updated', ${data.name}, ${JSON.stringify({ previousName: current.name })}::jsonb)`;
+      return { id: data.id };
+    }
     const id = nid("co");
     const slug = data.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") + "-" + id.slice(-4);
     const mark = companyMarkFromName(data.name);
@@ -976,13 +983,9 @@ export const createCompany = createServerFn({ method: "POST" })
       insert into companies (id, name, slug, status, billing_status, default_speed_limit, city, created_by, mark)
       values (${id}, ${data.name}, ${slug}, 'active', 'trial', ${data.speedLimit ?? 80}, ${data.city ?? null}, ${session.userId}, ${mark})
     `;
-    await sql`
-      insert into audit_logs (id, company_id, actor_id, action, target)
-      values (${nid("aud")}, ${id}, ${session.userId}, 'company.created', ${data.name})
-    `;
+    await sql`insert into audit_logs (id, company_id, actor_id, action, target) values (${nid("aud")}, ${id}, ${session.userId}, 'company.created', ${data.name})`;
     return { id };
   });
-
 export const setCompanyStatus = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .validator(z.object({ companyId: z.string(), status: z.enum(["active", "suspended"]) }))
