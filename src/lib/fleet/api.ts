@@ -918,6 +918,39 @@ export const logFuel = createServerFn({ method: "POST" })
     return { id };
   });
 
+export const updateFuelEvent = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator(z.object({
+    id: z.string(),
+    kind: z.enum(["fill", "drop"]),
+    litres: z.number().positive().max(2000),
+    notes: z.string().max(240).optional(),
+  }))
+  .handler(async ({ context, data }) => {
+    const { sql, session } = await ctx(context.userId);
+    if (session.role !== "super_admin" && session.role !== "company_admin") throw new Error("Forbidden");
+    const scope = await companyScope(sql, session);
+    const row = (await sql<{ company_id: string; vehicle_id: string; kind: string; litres: number; notes: string | null }>`select company_id, vehicle_id, kind, litres, notes from fuel_events where id = ${data.id}`)[0];
+    if (!row || !inScope(scope, row.company_id)) throw new Error("Fuel entry not found");
+    await sql`update fuel_events set kind = ${data.kind}, litres = ${data.litres}, notes = ${data.notes?.trim() || null} where id = ${data.id}`;
+    await sql`insert into audit_logs (id, company_id, actor_id, action, target, meta) values (${nid("aud")}, ${row.company_id}, ${session.userId}, 'fuel.updated', ${data.id}, ${JSON.stringify({ before: { kind: row.kind, litres: row.litres, notes: row.notes }, after: { kind: data.kind, litres: data.litres, notes: data.notes?.trim() || null } })}::jsonb)`;
+    return { ok: true };
+  });
+
+export const deleteFuelEvent = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator(z.object({ id: z.string() }))
+  .handler(async ({ context, data }) => {
+    const { sql, session } = await ctx(context.userId);
+    if (session.role !== "super_admin" && session.role !== "company_admin") throw new Error("Forbidden");
+    const scope = await companyScope(sql, session);
+    const row = (await sql<{ company_id: string; vehicle_id: string; kind: string; litres: number; notes: string | null }>`select company_id, vehicle_id, kind, litres, notes from fuel_events where id = ${data.id}`)[0];
+    if (!row || !inScope(scope, row.company_id)) throw new Error("Fuel entry not found");
+    await sql`insert into audit_logs (id, company_id, actor_id, action, target, meta) values (${nid("aud")}, ${row.company_id}, ${session.userId}, 'fuel.deleted', ${data.id}, ${JSON.stringify({ vehicleId: row.vehicle_id, kind: row.kind, litres: row.litres, notes: row.notes })}::jsonb)`;
+    await sql`delete from fuel_events where id = ${data.id}`;
+    return { ok: true };
+  });
+
 export const listCompanies = createServerFn({ method: "GET" })
   .middleware([authMiddleware])
   .handler(async ({ context }) => {
