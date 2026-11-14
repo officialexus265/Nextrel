@@ -2887,7 +2887,7 @@ export const listIngestJournal = createServerFn({ method: "GET" })
         if (row.company_id) return inScope(scope, row.company_id);
         return session.role === "field_admin";
       })
-      .slice(0, 12)
+      .slice(0, 8)
       .map(
         (row): IngestRow => ({
           id: row.id,
