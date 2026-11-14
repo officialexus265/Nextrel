@@ -91,6 +91,7 @@ function LiveOps() {
               selectedId={selectedId}
               follow={follow}
               fitNonce={fitNonce}
+              mapCenter={q.data.mapCenter}
               onSelect={setSelectedId}
               className="h-full w-full"
             />
