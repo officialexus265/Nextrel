@@ -123,14 +123,14 @@ function DevicesPage() {
         <table className="w-full min-w-[860px] text-left text-sm">
           <thead className="text-xs uppercase tracking-[0.12em] text-subtle">
             <tr>
-              {["IMEI", "Decoder", "Vehicle", "Company", "Last seen", "GSM", "GPS", "Battery", ""].map((h) => (
-                <th key={h} className="px-2 py-2 font-medium">{h}</th>
+              {["IMEI", "Decoder", "Vehicle", "Company", "Last seen", "GSM", "GPS", "Battery", "Device actions"].map((h) => (
+                <th key={h} className="whitespace-nowrap px-3 py-3 font-medium">{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {(q.data ?? []).map((d) => (
-              <tr key={d.id} className="border-t border-border">
+              <tr key={d.id} className="border-t border-border align-middle hover:bg-surface-2/40">
                 <td className="px-2 py-2 font-mono text-xs">{d.imei}</td>
                 <td className="px-2 py-2"><Badge tone="muted">{d.decoder}</Badge></td>
                 <td className="px-2 py-2">{d.vehicleName ?? "—"}</td>
@@ -139,8 +139,8 @@ function DevicesPage() {
                 <td className="tabular px-2 py-2">{d.gsmSignal ?? "—"}</td>
                 <td className="tabular px-2 py-2">{d.gpsSignal ?? "—"}</td>
                 <td className="tabular px-2 py-2">{d.battery != null ? `${Math.round(d.battery)}%` : "—"}</td>
-                <td className="px-2 py-2">
-                  <div className="flex flex-col items-start gap-1">
+                <td className="px-3 py-3 align-middle">
+                  <div className="flex min-w-[250px] flex-wrap items-center gap-1.5">
                     {(session.data?.role === "super_admin" || session.data?.role === "field_admin" || session.data?.role === "company_admin") && (
                       <Button size="sm" variant="secondary" onClick={() => {
                         setEditingId(d.id);
@@ -161,24 +161,31 @@ function DevicesPage() {
                     />
                     {(session.data?.role === "super_admin" || session.data?.role === "field_admin" || session.data?.role === "company_admin") && (
                       <Button size="sm" variant="ghost" disabled={remove.isPending} onClick={() => {
-                        if (window.confirm(`Remove device ${d.imei}? devices that have reported data or have calibration/command history are retained.`)) remove.mutate(d.id);
+                        if (window.confirm(`Remove device ${d.imei}? Devices that have reported data or have calibration/command history are retained.`)) remove.mutate(d.id);
                       }}>Delete</Button>
                     )}
                   </div>
-                  <select
-                    className="mt-1 h-8 w-40 rounded-[var(--radius-xs)] border border-border bg-surface-2 px-2 text-xs"
-                    defaultValue={d.vehicleId ?? ""}
-                    onChange={async (e) => {
-                      await assignDevice({ data: { deviceId: d.id, vehicleId: e.target.value || null } });
-                      toast.success("Assignment updated");
-                      qc.invalidateQueries({ queryKey: ["devices"] });
-                    }}
-                  >
-                    <option value="">Unassigned</option>
-                    {(vehicles.data ?? []).map((v) => (
-                      <option key={v.id} value={v.id}>{v.plate}</option>
-                    ))}
-                  </select>
+                  <label className="mt-2 flex min-w-[250px] items-center gap-2">
+                    <span className="shrink-0 text-xs text-subtle">Vehicle</span>
+                    <select
+                      className="h-8 min-w-0 flex-1 rounded-[var(--radius-xs)] border border-border bg-surface-2 px-2 text-xs"
+                      defaultValue={d.vehicleId ?? ""}
+                      onChange={async (e) => {
+                        try {
+                          await assignDevice({ data: { deviceId: d.id, vehicleId: e.target.value || null } });
+                          toast.success("Assignment updated");
+                          qc.invalidateQueries({ queryKey: ["devices"] });
+                        } catch (error) {
+                          toast.error(error instanceof Error ? error.message : "Could not update assignment");
+                        }
+                      }}
+                    >
+                      <option value="">Unassigned</option>
+                      {(vehicles.data ?? []).map((v) => (
+                        <option key={v.id} value={v.id}>{v.plate}</option>
+                      ))}
+                    </select>
+                  </label>
                 </td>
               </tr>
             ))}

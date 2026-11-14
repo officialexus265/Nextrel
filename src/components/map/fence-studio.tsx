@@ -47,9 +47,9 @@ export function FenceStudioMap({
       const L = await import("leaflet");
       await import("leaflet/dist/leaflet.css");
       if (cancelled || !hostRef.current) return;
-      const map = L.map(hostRef.current, { zoomControl: true, attributionControl: true }).setView([-1.286, 36.82], 12);
-      L.tileLayer("https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png?key=cb1_58tw_1_1ac83981eb505a5d6d737364", {
-        attribution: "&copy; OpenStreetMap &copy; CARTO",
+      const map = L.map(hostRef.current, { zoomControl: true, attributionControl: true }).setView([-13.2543, 34.3015], 6);
+      L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png", {
+        attribution: "&copy; OpenStreetMap contributors &copy; CARTO",
         maxZoom: 19,
       }).addTo(map);
       savedRef.current = L.layerGroup().addTo(map);

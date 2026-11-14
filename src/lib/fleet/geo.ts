@@ -118,11 +118,11 @@ export function parseSchedule(raw: unknown): FenceSchedule | null {
   return { days, start: rec.start, end: rec.end };
 }
 
-/** True when a fence should be evaluated. Null schedule means always on. Clock is Nairobi (EAT). */
+/** True when a fence should be evaluated. Null schedule means always on. Clock uses Malawi time (Africa/Blantyre). */
 export function scheduleIsOpen(schedule: FenceSchedule | null, now = new Date()): boolean {
   if (!schedule) return true;
   const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone: "Africa/Nairobi",
+    timeZone: "Africa/Blantyre",
     weekday: "short",
     hour: "2-digit",
     minute: "2-digit",

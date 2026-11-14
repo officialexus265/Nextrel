@@ -138,7 +138,7 @@ function GeofencesPage() {
         <div className="border-b border-border px-4 py-3">
           <div className="text-xs uppercase tracking-[0.16em] text-subtle">Zones</div>
           <h1 className="text-lg font-semibold tracking-tight">Geofences</h1>
-          <p className="mt-1 text-sm text-muted">Circles, polygons, and route corridors. Schedules use Nairobi time.</p>
+          <p className="mt-1 text-sm text-muted">Circles, polygons, and route corridors. Schedules use Malawi time.</p>
           <div className="mt-3 flex gap-1">
             <Button size="sm" variant={!drawing ? "default" : "secondary"} onClick={() => setDrawing(false)}>
               Library
