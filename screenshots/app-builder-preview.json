@@ -1,0 +1,36 @@
+{
+  "url": "http://127.0.0.1:8080/",
+  "viewports": {
+    "desktop": {
+      "width": 1280,
+      "height": 800,
+      "status": 200,
+      "title": "Nextrel",
+      "hasCanvas": false,
+      "bodyTextLen": 493,
+      "bodyTextHash": "a162b6915bbfff7621ed6bc46ea8e0275815e448c1a549a21ee69ec6c23c7b2d",
+      "bodyTextPrefix": "Nextrel Sign in VEHICLE TRACKING · FLEET COMMAND See every vehic",
+      "horizontalOverflow": false,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "screenshot": "/workspace/screenshots/app-builder-preview.png"
+    },
+    "mobile": {
+      "width": 390,
+      "height": 844,
+      "status": 200,
+      "title": "Nextrel",
+      "hasCanvas": false,
+      "bodyTextLen": 493,
+      "bodyTextHash": "a162b6915bbfff7621ed6bc46ea8e0275815e448c1a549a21ee69ec6c23c7b2d",
+      "bodyTextPrefix": "Nextrel Sign in VEHICLE TRACKING · FLEET COMMAND See every vehic",
+      "horizontalOverflow": false,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "screenshot": "/workspace/screenshots/app-builder-preview-mobile.png"
+    }
+  },
+  "brandWarnings": [],
+  "authWarnings": [],
+  "verdictFile": "/workspace/screenshots/app-builder-preview.json"
+}

@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 320" role="img" aria-label="Document">
+  <rect width="240" height="320" rx="12" fill="#181b22" stroke="#2a303c"/>
+  <rect x="28" y="36" width="140" height="10" rx="3" fill="#d4d8e0"/>
+  <rect x="28" y="58" width="96" height="8" rx="3" fill="#5c616c"/>
+  <rect x="28" y="96" width="184" height="8" rx="3" fill="#2a303c"/>
+  <rect x="28" y="114" width="170" height="8" rx="3" fill="#2a303c"/>
+  <rect x="28" y="132" width="184" height="8" rx="3" fill="#2a303c"/>
+  <rect x="28" y="150" width="128" height="8" rx="3" fill="#2a303c"/>
+  <rect x="28" y="188" width="80" height="80" rx="6" fill="#111318" stroke="#3f9d78"/>
+  <text x="48" y="234" fill="#3f9d78" font-family="ui-monospace, monospace" font-size="11">SEAL</text>
+</svg>

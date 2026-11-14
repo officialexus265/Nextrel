@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 360" role="img" aria-label="Dashcam still">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1a2433"/>
+      <stop offset="1" stop-color="#0c1016"/>
+    </linearGradient>
+  </defs>
+  <rect width="640" height="360" fill="url(#sky)"/>
+  <path d="M0 210 L180 190 L320 198 L640 170 L640 360 L0 360 Z" fill="#161c24"/>
+  <path d="M250 210 L310 210 L360 360 L220 360 Z" fill="#2a3038"/>
+  <path d="M0 214 H640" stroke="#3f9d78" stroke-width="1.2" opacity="0.5"/>
+  <circle cx="520" cy="70" r="18" fill="#d4d8e0" opacity="0.25"/>
+  <rect x="16" y="16" width="170" height="54" rx="6" fill="#08090c" opacity="0.72"/>
+  <text x="28" y="38" fill="#8b909c" font-family="ui-monospace, monospace" font-size="11">REC  ●  22:14:08</text>
+  <text x="28" y="56" fill="#eceef2" font-family="ui-monospace, monospace" font-size="11">CAM-F  ·  1080P</text>
+  <rect x="470" y="300" width="154" height="40" rx="6" fill="#08090c" opacity="0.72"/>
+  <text x="484" y="324" fill="#3f9d78" font-family="ui-monospace, monospace" font-size="12">EVENT STILL</text>
+</svg>
