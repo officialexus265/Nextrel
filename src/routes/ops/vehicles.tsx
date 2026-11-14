@@ -52,7 +52,14 @@ function VehiclesPage() {
         actions={
           <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
-              <Button size="sm">Add vehicle</Button>
+              <Button size="sm" onClick={() => {
+                setEditingId(null);
+                setName("");
+                setPlate("");
+                setMake("");
+                setModel("");
+                setCompanyId("");
+              }}>Add vehicle</Button>
             </DialogTrigger>
             <DialogContent title={editingId ? "Edit vehicle" : "New vehicle"}>
               <form
