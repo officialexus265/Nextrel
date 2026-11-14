@@ -2,7 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { toast } from "sonner";
-import { assignDevice, filePacket, getAppSession, listCalibrations, listCompanies, listDevices, listIngestJournal, listVehicles, queueDeviceCommand, saveCalibration, saveDevice } from "@/lib/fleet/api";
+import { assignDevice, deleteDevice, filePacket, getAppSession, listCalibrations, listCompanies, listDevices, listIngestJournal, listVehicles, queueDeviceCommand, saveCalibration, saveDevice } from "@/lib/fleet/api";
 import { DECODER_NAMES, decode, samplePacket, type DecoderName, type NormalizedFix } from "@/lib/fleet/decoders";
 import { commandLabel } from "@/lib/fleet/labels";
 import { PageHeader } from "@/components/layout/app-shell";
@@ -125,6 +125,11 @@ function DevicesPage() {
                       lastKind={d.lastCommandKind}
                       lastStatus={d.lastCommandStatus}
                     />
+                    {(session.data?.role === "super_admin" || session.data?.role === "field_admin" || session.data?.role === "company_admin") && (
+                      <Button size="sm" variant="ghost" disabled={remove.isPending} onClick={() => {
+                        if (window.confirm(`Remove device ${d.imei}? GPS history is kept; devices with calibration or command history are protected.`)) remove.mutate(d.id);
+                      }}>Delete</Button>
+                    )}
                   </div>
                   <select
                     className="mt-1 h-8 w-40 rounded-[var(--radius-xs)] border border-border bg-surface-2 px-2 text-xs"
