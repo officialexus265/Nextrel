@@ -2310,6 +2310,20 @@ export const inviteUser = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
+export const revokeInvite = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator(z.object({ id: z.string() }))
+  .handler(async ({ context, data }) => {
+    const { sql, session } = await ctx(context.userId);
+    const row = (await sql<{ id: string; email: string; company_id: string | null }>`select id, email, company_id from invites where id = ${data.id}`)[0];
+    const scope = await companyScope(sql, session);
+    if (!row || (session.realRole !== "super_admin" && !inScope(scope, row.company_id))) throw new Error("Invite not found");
+    if (session.realRole !== "super_admin" && session.role !== "company_admin") throw new Error("Forbidden");
+    await sql`delete from invites where id = ${data.id}`;
+    await sql`insert into audit_logs (id, company_id, actor_id, action, target) values (${nid("aud")}, ${row.company_id}, ${session.userId}, 'user.invite_revoked', ${row.email})`;
+    return { ok: true };
+  });
+
 export const getFleetBrief = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .validator(z.object({ window: z.enum(["day", "week", "month"]) }))
