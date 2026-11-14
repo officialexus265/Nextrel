@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Area, AreaChart, ResponsiveContainer, Tooltip, YAxis } from "recharts";
 import { ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
-import { assignDriver, getAppSession, getVehicleDossier, listDrivers, logFuel, queueDeviceCommand, deleteDocument, saveDocument, setSpeedLimit } from "@/lib/fleet/api";
+import { assignDriver, getAppSession, getVehicleDossier, listDrivers, logFuel, updateFuelEvent, deleteFuelEvent, queueDeviceCommand, deleteDocument, saveDocument, setSpeedLimit } from "@/lib/fleet/api";
 import { commandLabel } from "@/lib/fleet/labels";
 import { PageHeader } from "@/components/layout/app-shell";
 import { Badge } from "@/components/ui/badge";
@@ -21,6 +21,7 @@ function VehicleFile() {
   const qc = useQueryClient();
   const [mounted, setMounted] = useState(false);
   const [fuelOpen, setFuelOpen] = useState(false);
+  const [editingFuelId, setEditingFuelId] = useState<string | null>(null);
   const [docOpen, setDocOpen] = useState(false);
   const [editingDocId, setEditingDocId] = useState<string | null>(null);
   const [kind, setKind] = useState<"fill" | "drop">("fill");
@@ -50,12 +51,24 @@ function VehicleFile() {
     refetchInterval: 12_000,
   });
   const log = useMutation({
-    mutationFn: () => logFuel({ data: { vehicleId, kind, litres: Number(litres), notes } }),
+    mutationFn: () => editingFuelId
+      ? updateFuelEvent({ data: { id: editingFuelId, kind, litres: Number(litres), notes } })
+      : logFuel({ data: { vehicleId, kind, litres: Number(litres), notes } }),
     onSuccess: () => {
-      toast.success("Fuel entry logged");
+      toast.success(editingFuelId ? "Fuel entry updated" : "Fuel entry logged");
       setFuelOpen(false);
+      setEditingFuelId(null);
       setLitres("");
       setNotes("");
+      qc.invalidateQueries({ queryKey: ["dossier", vehicleId] });
+      qc.invalidateQueries({ queryKey: ["fleet-brief"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+  const removeFuel = useMutation({
+    mutationFn: (id: string) => deleteFuelEvent({ data: { id } }),
+    onSuccess: () => {
+      toast.success("Fuel entry deleted");
       qc.invalidateQueries({ queryKey: ["dossier", vehicleId] });
       qc.invalidateQueries({ queryKey: ["fleet-brief"] });
     },
@@ -148,9 +161,14 @@ function VehicleFile() {
             {canLog && (
               <Dialog open={fuelOpen} onOpenChange={setFuelOpen}>
                 <DialogTrigger asChild>
-                  <Button size="sm" variant="secondary">Log fuel</Button>
+                  <Button size="sm" variant="secondary" onClick={() => {
+                    setEditingFuelId(null);
+                    setKind("fill");
+                    setLitres("");
+                    setNotes("");
+                  }}>Log fuel</Button>
                 </DialogTrigger>
-                <DialogContent title="Manual fuel entry">
+                <DialogContent title={editingFuelId ? "Edit fuel entry" : "Manual fuel entry"}>
                   <form
                     className="space-y-3"
                     onSubmit={(e) => {
@@ -174,7 +192,7 @@ function VehicleFile() {
                       <Input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Pump slip, depot, or reason" />
                     </div>
                     <Button className="w-full" type="submit" disabled={log.isPending || !(Number(litres) > 0)}>
-                      Save entry
+                      {editingFuelId ? "Save changes" : "Save entry"}
                     </Button>
                   </form>
                 </DialogContent>
@@ -469,11 +487,27 @@ function VehicleFile() {
               <ul className="mt-3 space-y-2">
                 {data.fuelEvents.map((f) => (
                   <li key={f.id} className="flex items-start justify-between gap-3 text-sm">
-                    <span>
+                    <span className="min-w-0">
                       <span className="block capitalize">{f.kind} · {f.litres} L</span>
                       <span className="text-xs text-subtle">{f.notes ?? "No note"} · {formatAgo(f.ts)}</span>
                     </span>
-                    <Badge tone={f.kind === "drop" ? "down" : "live"}>{f.kind}</Badge>
+                    <div className="flex shrink-0 items-center gap-1">
+                      <Badge tone={f.kind === "drop" ? "down" : "live"}>{f.kind}</Badge>
+                      {canLog && (
+                        <>
+                          <Button size="sm" variant="secondary" onClick={() => {
+                            setEditingFuelId(f.id);
+                            setKind(f.kind);
+                            setLitres(String(f.litres));
+                            setNotes(f.notes ?? "");
+                            setFuelOpen(true);
+                          }}>Edit</Button>
+                          <Button size="sm" variant="ghost" disabled={removeFuel.isPending} onClick={() => {
+                            if (window.confirm(`Delete this ${f.kind} entry of ${f.litres} L?`)) removeFuel.mutate(f.id);
+                          }}>Delete</Button>
+                        </>
+                      )}
+                    </div>
                   </li>
                 ))}
                 {data.fuelEvents.length === 0 && <li className="text-sm text-muted">No manual or detected fuel events yet.</li>}
