@@ -1,7 +1,6 @@
 -- Permanently remove the original demo fleet without touching registered accounts.
 -- Company-owned records are deleted by the two fixed demo company IDs only.
 
-begin;
 
 delete from device_calibrations
 where device_id in (
@@ -55,4 +54,3 @@ update sim_state set seeded = false, last_tick = null where id = 1;
 insert into app_meta (key, value) values ('fleet_seed', 'disabled')
 on conflict (key) do update set value = excluded.value;
 
-commit;
