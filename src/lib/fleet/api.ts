@@ -2075,44 +2075,36 @@ export const listMaintenance = createServerFn({ method: "GET" })
 
 export const saveMaintenance = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
-  .validator(
-    z.object({
-      vehicleId: z.string(),
-      title: z.string().min(2).max(120),
-      dueOdometer: z.number().positive().optional(),
-      dueHours: z.number().positive().optional(),
-      dueDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
-      notes: z.string().max(240).optional(),
-    }),
-  )
+  .validator(z.object({
+    id: z.string().optional(),
+    vehicleId: z.string(),
+    title: z.string().min(2).max(120),
+    dueOdometer: z.number().positive().optional(),
+    dueHours: z.number().positive().optional(),
+    dueDate: z.string().regex(/^\\d{4}-\\d{2}-\\d{2}$/).optional(),
+    notes: z.string().max(240).optional(),
+  }))
   .handler(async ({ context, data }) => {
     const { sql, session } = await ctx(context.userId);
     if (!["super_admin", "company_admin"].includes(session.role)) throw new Error("Forbidden");
-    if (data.dueOdometer == null && data.dueHours == null && !data.dueDate) {
-      throw new Error("Set a due date, odometer, or engine hours");
-    }
+    if (data.dueOdometer == null && data.dueHours == null && !data.dueDate) throw new Error("Set a due date, odometer, or engine hours");
     const scope = await companyScope(sql, session);
-    const vehicle = (
-      await sql<{ id: string; company_id: string; plate: string }>`
-        select id, company_id, plate from vehicles where id = ${data.vehicleId}
-      `
-    )[0];
+    const vehicle = (await sql<{ id: string; company_id: string; plate: string }>`select id, company_id, plate from vehicles where id = ${data.vehicleId}`)[0];
     if (!vehicle || !inScope(scope, vehicle.company_id)) throw new Error("Not found");
+    if (data.id) {
+      const current = (await sql<{ company_id: string; status: string }>`select company_id, status from maintenance_reminders where id = ${data.id}`)[0];
+      if (!current || !inScope(scope, current.company_id)) throw new Error("Reminder not found");
+      if (current.status !== "open") throw new Error("Completed maintenance records cannot be edited.");
+      await sql`update maintenance_reminders set vehicle_id = ${vehicle.id}, company_id = ${vehicle.company_id}, title = ${data.title}, due_odometer = ${data.dueOdometer ?? null}, due_hours = ${data.dueHours ?? null}, due_date = ${data.dueDate ?? null}, notes = ${data.notes ?? null} where id = ${data.id}`;
+      await sql`insert into audit_logs (id, company_id, actor_id, action, target) values (${nid("aud")}, ${vehicle.company_id}, ${session.userId}, 'maintenance.updated', ${`${vehicle.plate} ${data.title}`})`;
+      return { id: data.id };
+    }
     const id = nid("mn");
-    await sql`
-      insert into maintenance_reminders (id, company_id, vehicle_id, title, due_odometer, due_hours, due_date, status, notes)
-      values (
-        ${id}, ${vehicle.company_id}, ${vehicle.id}, ${data.title},
-        ${data.dueOdometer ?? null}, ${data.dueHours ?? null}, ${data.dueDate ?? null}, 'open', ${data.notes ?? null}
-      )
-    `;
-    await sql`
-      insert into audit_logs (id, company_id, actor_id, action, target)
-      values (${nid("aud")}, ${vehicle.company_id}, ${session.userId}, 'maintenance.created', ${`${vehicle.plate} ${data.title}`})
-    `;
+    await sql`insert into maintenance_reminders (id, company_id, vehicle_id, title, due_odometer, due_hours, due_date, status, notes)
+      values (${id}, ${vehicle.company_id}, ${vehicle.id}, ${data.title}, ${data.dueOdometer ?? null}, ${data.dueHours ?? null}, ${data.dueDate ?? null}, 'open', ${data.notes ?? null})`;
+    await sql`insert into audit_logs (id, company_id, actor_id, action, target) values (${nid("aud")}, ${vehicle.company_id}, ${session.userId}, 'maintenance.created', ${`${vehicle.plate} ${data.title}`})`;
     return { id };
   });
-
 export const completeMaintenance = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .validator(z.object({ id: z.string() }))
