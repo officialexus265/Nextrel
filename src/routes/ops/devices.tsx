@@ -1,6 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
+import { MoreHorizontal, Search } from "lucide-react";
 import { toast } from "sonner";
 import { assignDevice, deleteDevice, filePacket, getAppSession, listCalibrations, listCompanies, listDevices, listIngestJournal, listVehicles, queueDeviceCommand, saveCalibration, saveDevice } from "@/lib/fleet/api";
 import { DECODER_NAMES, decode, samplePacket, type DecoderName, type NormalizedFix } from "@/lib/fleet/decoders";
@@ -9,6 +10,7 @@ import { PageHeader } from "@/components/layout/app-shell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/dialog";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -29,6 +31,17 @@ function DevicesPage() {
   const [decoder, setDecoder] = useState("generic_http");
   const [companyId, setCompanyId] = useState("");
   const [vehicleId, setVehicleId] = useState("");
+  const [deviceSearch, setDeviceSearch] = useState("");
+
+  const selectedCompanyId = companyId || companies.data?.[0]?.id || "";
+  const formVehicles = (vehicles.data ?? []).filter((v) => v.company_id === selectedCompanyId);
+  const normalizedSearch = deviceSearch.toLowerCase().replace(/[\\s-]/g, "");
+  const filteredDevices = (q.data ?? []).filter((d) => {
+    if (!normalizedSearch) return true;
+    const vehicle = (vehicles.data ?? []).find((v) => v.id === d.vehicleId);
+    const values = [d.imei, d.vehicleName ?? "", vehicle?.plate ?? "", vehicle?.name ?? ""];
+    return values.some((value) => value.toLowerCase().replace(/[\\s-]/g, "").includes(normalizedSearch));
+  });
 
   const mut = useMutation({
     mutationFn: () =>
@@ -109,7 +122,7 @@ function DevicesPage() {
                   <Label>Assign vehicle</Label>
                   <select className="h-10 w-full rounded-[var(--radius-sm)] border border-border bg-surface-2 px-3 text-sm" value={vehicleId} onChange={(e) => setVehicleId(e.target.value)}>
                     <option value="">Unassigned</option>
-                    {(vehicles.data ?? []).map((v) => <option key={v.id} value={v.id}>{v.plate} — {v.name}</option>)}
+                    {formVehicles.map((v) => <option key={v.id} value={v.id}>{v.plate} — {v.name}</option>)}
                   </select>
                 </div>
                 <Button className="w-full" type="submit" disabled={mut.isPending}>{editingId ? "Save changes" : "Register device"}</Button>
@@ -129,7 +142,7 @@ function DevicesPage() {
             </tr>
           </thead>
           <tbody>
-            {(q.data ?? []).map((d) => (
+            {filteredDevices.map((d) => (
               <tr key={d.id} className="border-t border-border align-middle hover:bg-surface-2/40">
                 <td className="px-2 py-2 font-mono text-xs">{d.imei}</td>
                 <td className="px-2 py-2"><Badge tone="muted">{d.decoder}</Badge></td>
@@ -140,53 +153,63 @@ function DevicesPage() {
                 <td className="tabular px-2 py-2">{d.gpsSignal ?? "—"}</td>
                 <td className="tabular px-2 py-2">{d.battery != null ? `${Math.round(d.battery)}%` : "—"}</td>
                 <td className="px-3 py-3 align-middle">
-                  <div className="min-w-[270px] space-y-2">
-                    <div className="flex flex-wrap items-center gap-1.5 rounded-[var(--radius-md)] border border-border bg-surface-2/70 p-1.5">
-                    {(session.data?.role === "super_admin" || session.data?.role === "field_admin" || session.data?.role === "company_admin") && (
-                      <Button size="sm" variant="secondary" onClick={() => {
-                        setEditingId(d.id);
-                        setImei(d.imei);
-                        setProtocol(d.protocol);
-                        setDecoder(d.decoder);
-                        setCompanyId(d.companyId ?? "");
-                        setVehicleId(d.vehicleId ?? "");
-                        setOpen(true);
-                      }}>Edit</Button>
-                    )}
-                    <CalibrateButton deviceId={d.id} count={d.calibrationCount} />
-                    <CommandButtons
-                      deviceId={d.id}
-                      role={session.data?.role}
-                      lastKind={d.lastCommandKind}
-                      lastStatus={d.lastCommandStatus}
-                    />
-                    {(session.data?.role === "super_admin" || session.data?.role === "field_admin" || session.data?.role === "company_admin") && (
-                      <Button size="sm" variant="ghost" disabled={remove.isPending} onClick={() => {
-                        if (window.confirm(`Remove device ${d.imei}? Devices that have reported data or have calibration/command history are retained.`)) remove.mutate(d.id);
-                      }}>Delete</Button>
-                    )}
-                    </div>
-                  <label className="flex min-w-0 items-center gap-2 rounded-[var(--radius-md)] border border-border bg-surface px-2.5 py-2">
-                    <span className="shrink-0 text-[11px] font-medium uppercase tracking-wide text-subtle">Assign to</span>
-                    <select
-                      className="h-8 min-w-0 flex-1 rounded-[var(--radius-xs)] border border-border bg-surface-2 px-2.5 text-xs font-medium"
-                      defaultValue={d.vehicleId ?? ""}
-                      onChange={async (e) => {
-                        try {
-                          await assignDevice({ data: { deviceId: d.id, vehicleId: e.target.value || null } });
-                          toast.success("Assignment updated");
-                          qc.invalidateQueries({ queryKey: ["devices"] });
-                        } catch (error) {
-                          toast.error(error instanceof Error ? error.message : "Could not update assignment");
-                        }
-                      }}
-                    >
-                      <option value="">Unassigned</option>
-                      {(vehicles.data ?? []).map((v) => (
-                        <option key={v.id} value={v.id}>{v.plate}</option>
-                      ))}
-                    </select>
-                  </label>
+                  <div className="flex min-w-[220px] items-center gap-2">
+                    <label className="flex min-w-0 flex-1 items-center gap-2 rounded-[var(--radius-md)] border border-border bg-surface px-2.5 py-2">
+                      <span className="shrink-0 text-[11px] font-medium uppercase tracking-wide text-subtle">Assign to</span>
+                      <select
+                        className="h-8 min-w-0 flex-1 rounded-[var(--radius-xs)] border border-border bg-surface-2 px-2.5 text-xs font-medium"
+                        value={d.vehicleId ?? ""}
+                        onChange={async (e) => {
+                          try {
+                            await assignDevice({ data: { deviceId: d.id, vehicleId: e.target.value || null } });
+                            toast.success("Assignment updated");
+                            qc.invalidateQueries({ queryKey: ["devices"] });
+                            qc.invalidateQueries({ queryKey: ["live-fleet"] });
+                            qc.invalidateQueries({ queryKey: ["vehicles"] });
+                          } catch (error) {
+                            toast.error(error instanceof Error ? error.message : "Could not update assignment");
+                          }
+                        }}
+                      >
+                        <option value="">Unassigned</option>
+                        {(vehicles.data ?? []).filter((v) => v.company_id === d.companyId).map((v) => (
+                          <option key={v.id} value={v.id}>{v.plate}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button type="button" size="icon" variant="ghost" aria-label="Device actions">
+                          <MoreHorizontal className="size-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="min-w-48">
+                        <DropdownMenuLabel>Device actions</DropdownMenuLabel>
+                        {(session.data?.role === "super_admin" || session.data?.role === "field_admin" || session.data?.role === "company_admin") && (
+                          <DropdownMenuItem onSelect={() => {
+                            setEditingId(d.id);
+                            setImei(d.imei);
+                            setProtocol(d.protocol);
+                            setDecoder(d.decoder);
+                            setCompanyId(d.companyId ?? "");
+                            setVehicleId(d.vehicleId ?? "");
+                            setOpen(true);
+                          }}>Edit device</DropdownMenuItem>
+                        )}
+                        <div className="px-2 py-1"><CalibrateButton deviceId={d.id} count={d.calibrationCount} /></div>
+                        <div className="px-2 py-1">
+                          <CommandButtons deviceId={d.id} role={session.data?.role} lastKind={d.lastCommandKind} lastStatus={d.lastCommandStatus} />
+                        </div>
+                        {(session.data?.role === "super_admin" || session.data?.role === "field_admin" || session.data?.role === "company_admin") && (
+                          <>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem className="text-down" onSelect={() => {
+                              if (window.confirm(`Remove device ${d.imei}? Devices that have reported data or have calibration/command history are retained.`)) remove.mutate(d.id);
+                            }}>Delete device</DropdownMenuItem>
+                          </>
+                        )}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </div>
                 </td>
               </tr>
@@ -424,7 +447,7 @@ function PacketBench() {
       </div>
       <div>
         <h2 className="text-sm font-medium">Ingest tape</h2>
-        <ul className="mt-2 divide-y divide-border rounded-[var(--radius-lg)] border border-border">
+        <ul className="mt-2 max-h-56 overflow-y-auto divide-y divide-border rounded-[var(--radius-lg)] border border-border">
           {(journal.data ?? []).map((row) => (
             <li key={row.id} className="flex flex-col gap-1 px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
               <div className="min-w-0">
