@@ -35,12 +35,12 @@ function DevicesPage() {
 
   const selectedCompanyId = companyId || companies.data?.[0]?.id || "";
   const formVehicles = (vehicles.data ?? []).filter((v) => v.company_id === selectedCompanyId);
-  const normalizedSearch = deviceSearch.toLowerCase().replace(/[\\s-]/g, "");
+  const normalizedSearch = deviceSearch.toLowerCase().replace(/[\s-]/g, "");
   const filteredDevices = (q.data ?? []).filter((d) => {
     if (!normalizedSearch) return true;
     const vehicle = (vehicles.data ?? []).find((v) => v.id === d.vehicleId);
     const values = [d.imei, d.vehicleName ?? "", vehicle?.plate ?? "", vehicle?.name ?? ""];
-    return values.some((value) => value.toLowerCase().replace(/[\\s-]/g, "").includes(normalizedSearch));
+    return values.some((value) => value.toLowerCase().replace(/[\s-]/g, "").includes(normalizedSearch));
   });
 
   const mut = useMutation({
@@ -132,7 +132,12 @@ function DevicesPage() {
         }
       />
       <PacketBench />
-      <div className="overflow-x-auto px-4 pb-10 md:px-6">
+      <div className="space-y-3 px-4 pb-10 md:px-6">
+        <div className="relative max-w-md">
+          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-subtle" />
+          <Input className="pl-9" placeholder="Search devices by IMEI or vehicle plate (e.g. GV 454)" value={deviceSearch} onChange={(e) => setDeviceSearch(e.target.value)} />
+        </div>
+        <div className="overflow-x-auto">
         <table className="w-full min-w-[860px] text-left text-sm">
           <thead className="text-xs uppercase tracking-[0.12em] text-subtle">
             <tr>
@@ -216,6 +221,8 @@ function DevicesPage() {
             ))}
           </tbody>
         </table>
+        {filteredDevices.length === 0 && <p className="px-3 py-6 text-sm text-muted">{deviceSearch ? "No devices match that IMEI or vehicle plate." : "No devices registered yet."}</p>}
+        </div>
       </div>
     </div>
   );
