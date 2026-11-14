@@ -3298,3 +3298,35 @@ export const deleteReportSchedule = createServerFn({ method: "POST" })
     await sql`insert into audit_logs (id, company_id, actor_id, action, target) values (${nid("aud")}, ${row.company_id}, ${session.userId}, 'report_schedule.deleted', ${row.kind + " " + row.recipient})`;
     return { ok: true };
   });
+
+
+export const setUserActive = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator(z.object({ userId: z.string(), active: z.boolean() }))
+  .handler(async ({ context, data }) => {
+    const { sql, session } = await ctx(context.userId);
+    if (session.realRole !== "super_admin") throw new Error("Forbidden");
+    if (data.userId === session.userId) throw new Error("You cannot deactivate your own account.");
+    const target = (await sql<{ role: string; email: string | null }>`select role, email from profiles where user_id = ${data.userId}`)[0];
+    if (!target) throw new Error("User not found");
+    if (target.role === "super_admin") throw new Error("Platform administrator accounts are protected.");
+    await sql`update profiles set active = ${data.active} where user_id = ${data.userId}`;
+    await sql`delete from view_overrides where user_id = ${data.userId}`;
+    await sql`insert into audit_logs (id, actor_id, action, target) values (${nid("aud")}, ${session.userId}, ${data.active ? "user.activated" : "user.deactivated"}, ${target.email ?? data.userId})`;
+    return { ok: true };
+  });
+
+export const updateUserRole = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator(z.object({ userId: z.string(), role: z.enum(["field_admin", "company_admin", "tracker", "accounts", "pending"]) }))
+  .handler(async ({ context, data }) => {
+    const { sql, session } = await ctx(context.userId);
+    if (session.realRole !== "super_admin") throw new Error("Forbidden");
+    if (data.userId === session.userId) throw new Error("You cannot change your own role here.");
+    const target = (await sql<{ role: string; email: string | null; company_id: string | null }>`select role, email, company_id from profiles where user_id = ${data.userId}`)[0];
+    if (!target) throw new Error("User not found");
+    if (target.role === "super_admin") throw new Error("Platform administrator roles are protected.");
+    await sql`update profiles set role = ${data.role} where user_id = ${data.userId}`;
+    await sql`insert into audit_logs (id, company_id, actor_id, action, target, meta) values (${nid("aud")}, ${target.company_id}, ${session.userId}, 'user.role_updated', ${target.email ?? data.userId}, ${JSON.stringify({ from: target.role, to: data.role })}::jsonb)`;
+    return { ok: true };
+  });
