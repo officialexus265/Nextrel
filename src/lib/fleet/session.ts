@@ -25,9 +25,11 @@ export async function bootstrapSession(sql: Sql, userId: string): Promise<Sessio
 
   let profile = (
     await sql<{ role: string; company_id: string | null; name: string | null; email: string | null }>`
-      select role, company_id, name, email from profiles where user_id = ${userId}
+      select role, company_id, name, email, active from profiles where user_id = ${userId}
     `
   )[0];
+
+  if (profile && !profile.active) throw new Error("This account has been deactivated. Contact your platform administrator.");
 
   if (!profile) {
     const superCount = await sql<{ n: number }>`select count(*)::int as n from profiles where role = 'super_admin'`;
