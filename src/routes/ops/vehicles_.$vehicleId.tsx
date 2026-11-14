@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Area, AreaChart, ResponsiveContainer, Tooltip, YAxis } from "recharts";
 import { ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
-import { assignDriver, getAppSession, getVehicleDossier, listDrivers, logFuel, queueDeviceCommand, saveDocument, setSpeedLimit } from "@/lib/fleet/api";
+import { assignDriver, getAppSession, getVehicleDossier, listDrivers, logFuel, queueDeviceCommand, deleteDocument, saveDocument, setSpeedLimit } from "@/lib/fleet/api";
 import { commandLabel } from "@/lib/fleet/labels";
 import { PageHeader } from "@/components/layout/app-shell";
 import { Badge } from "@/components/ui/badge";
@@ -22,6 +22,7 @@ function VehicleFile() {
   const [mounted, setMounted] = useState(false);
   const [fuelOpen, setFuelOpen] = useState(false);
   const [docOpen, setDocOpen] = useState(false);
+  const [editingDocId, setEditingDocId] = useState<string | null>(null);
   const [kind, setKind] = useState<"fill" | "drop">("fill");
   const [litres, setLitres] = useState("");
   const [notes, setNotes] = useState("");
@@ -63,13 +64,22 @@ function VehicleFile() {
   const fileDoc = useMutation({
     mutationFn: () =>
       saveDocument({
-        data: { vehicleId, title: docTitle, kind: docKind, expiresOn: docExpiry || undefined },
+        data: { id: editingDocId ?? undefined, vehicleId, title: docTitle, kind: docKind, expiresOn: docExpiry || undefined },
       }),
     onSuccess: () => {
-      toast.success("Document filed");
+      toast.success(editingDocId ? "Document updated" : "Document filed");
       setDocOpen(false);
+      setEditingDocId(null);
       setDocTitle("");
       setDocExpiry("");
+      qc.invalidateQueries({ queryKey: ["dossier", vehicleId] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+  const removeDocument = useMutation({
+    mutationFn: (id: string) => deleteDocument({ data: { id } }),
+    onSuccess: () => {
+      toast.success("Document removed");
       qc.invalidateQueries({ queryKey: ["dossier", vehicleId] });
     },
     onError: (e: Error) => toast.error(e.message),
@@ -348,9 +358,14 @@ function VehicleFile() {
                 {canLog && (
                   <Dialog open={docOpen} onOpenChange={setDocOpen}>
                     <DialogTrigger asChild>
-                      <Button size="sm" variant="ghost">File paper</Button>
+                      <Button size="sm" variant="ghost" onClick={() => {
+                        setEditingDocId(null);
+                        setDocTitle("");
+                        setDocKind("insurance");
+                        setDocExpiry("");
+                      }}>File paper</Button>
                     </DialogTrigger>
-                    <DialogContent title="Vehicle document">
+                    <DialogContent title={editingDocId ? "Edit vehicle document" : "Vehicle document"}>
                       <form
                         className="space-y-3"
                         onSubmit={(e) => {
@@ -380,7 +395,7 @@ function VehicleFile() {
                           <Input type="date" value={docExpiry} onChange={(e) => setDocExpiry(e.target.value)} />
                         </div>
                         <Button className="w-full" type="submit" disabled={fileDoc.isPending}>
-                          Save
+                          {editingDocId ? "Save changes" : "Save"}
                         </Button>
                       </form>
                     </DialogContent>
@@ -390,13 +405,27 @@ function VehicleFile() {
               <ul className="mt-3 space-y-2">
                 {data.documents.map((d) => (
                   <li key={d.id} className="flex items-start justify-between gap-3 text-sm">
-                    <span>
+                    <span className="min-w-0">
                       <span className="block">{d.title}</span>
                       <span className="text-xs capitalize text-subtle">{d.kind}</span>
+                      <Badge tone={d.expiresOn && new Date(d.expiresOn).getTime() - Date.now() < 45 * 86400000 ? "idle" : "muted"}>
+                        {d.expiresOn ?? "No expiry"}
+                      </Badge>
                     </span>
-                    <Badge tone={d.expiresOn && new Date(d.expiresOn).getTime() - Date.now() < 45 * 86400000 ? "idle" : "muted"}>
-                      {d.expiresOn ?? "No expiry"}
-                    </Badge>
+                    {canLog && (
+                      <div className="flex shrink-0 gap-1">
+                        <Button size="sm" variant="secondary" onClick={() => {
+                          setEditingDocId(d.id);
+                          setDocTitle(d.title);
+                          setDocKind(d.kind as typeof docKind);
+                          setDocExpiry(d.expiresOn ?? "");
+                          setDocOpen(true);
+                        }}>Edit</Button>
+                        <Button size="sm" variant="ghost" disabled={removeDocument.isPending} onClick={() => {
+                          if (window.confirm(`Delete document "${d.title}"?`)) removeDocument.mutate(d.id);
+                        }}>Delete</Button>
+                      </div>
+                    )}
                   </li>
                 ))}
                 {data.documents.length === 0 && <li className="text-sm text-muted">No papers filed on this unit.</li>}
