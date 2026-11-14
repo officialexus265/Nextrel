@@ -161,7 +161,7 @@ function DevicesPage() {
                     />
                     {(session.data?.role === "super_admin" || session.data?.role === "field_admin" || session.data?.role === "company_admin") && (
                       <Button size="sm" variant="ghost" disabled={remove.isPending} onClick={() => {
-                        if (window.confirm(`Remove device ${d.imei}? GPS history is kept; devices with calibration or command history are protected.`)) remove.mutate(d.id);
+                        if (window.confirm(`Remove device ${d.imei}? devices that have reported data or have calibration/command history are retained.`)) remove.mutate(d.id);
                       }}>Delete</Button>
                     )}
                   </div>
