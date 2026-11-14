@@ -3,7 +3,7 @@
 -- also handles databases where the demo company IDs differ from the original seed IDs.
 create temp table _demo_company_ids on commit drop as
 select id from companies
-where id in (select id from _demo_company_ids)
+where id in ('co_meridian', 'co_harbor')
    or lower(trim(name)) in ('meridian logistics', 'harbor guard');
 
 
