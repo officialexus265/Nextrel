@@ -1870,16 +1870,26 @@ export const listDrivers = createServerFn({ method: "GET" })
 
 export const saveDriver = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
-  .validator(z.object({ name: z.string().min(2), licenseNo: z.string().optional(), phone: z.string().optional() }))
+  .validator(z.object({ id: z.string().optional(), name: z.string().min(2), licenseNo: z.string().optional(), phone: z.string().optional() }))
   .handler(async ({ context, data }) => {
     const { sql, session } = await ctx(context.userId);
     if (!["super_admin", "company_admin"].includes(session.role)) throw new Error("Forbidden");
     const companyId = session.companyId;
     if (!companyId) throw new Error("Select a company first");
-    await sql`
-      insert into drivers (id, company_id, name, license_no, phone)
-      values (${nid("drv")}, ${companyId}, ${data.name}, ${data.licenseNo ?? null}, ${data.phone ?? null})
-    `;
+    if (data.id) {
+      const scope = await companyScope(sql, session);
+      const current = (await sql<{ company_id: string; name: string }>`select company_id, name from drivers where id = ${data.id}`)[0];
+      if (!current || !inScope(scope, current.company_id)) throw new Error("Driver not found");
+      await sql`update drivers set name = ${data.name}, license_no = ${data.licenseNo ?? null}, phone = ${data.phone ?? null} where id = ${data.id}`;
+      await sql`insert into audit_logs (id, company_id, actor_id, action, target) values (${nid("aud")}, ${current.company_id}, ${session.userId}, 'driver.updated', ${data.name})`;
+    } else {
+      const id = nid("drv");
+      await sql`
+        insert into drivers (id, company_id, name, license_no, phone)
+        values (${id}, ${companyId}, ${data.name}, ${data.licenseNo ?? null}, ${data.phone ?? null})
+      `;
+      await sql`insert into audit_logs (id, company_id, actor_id, action, target) values (${nid("aud")}, ${companyId}, ${session.userId}, 'driver.created', ${data.name})`;
+    }
     return { ok: true };
   });
 
@@ -3224,7 +3234,6 @@ export const deleteVehicle = createServerFn({ method: "POST" })
     `;
     if ((history[0]?.n ?? 0) > 0) throw new Error("This vehicle has operational history. Keep it in the fleet register; historical records must not be deleted.");
     await sql`update devices set vehicle_id = null where vehicle_id = ${data.id}`;
-    await sql`update drivers set id = id where id in (select assigned_driver_id from vehicles where id = ${data.id} and assigned_driver_id is not null)`;
     await sql`delete from vehicles where id = ${data.id} and company_id = ${vehicle.company_id}`;
     await sql`insert into audit_logs (id, company_id, actor_id, action, target) values (${nid("aud")}, ${vehicle.company_id}, ${session.userId}, 'vehicle.deleted', ${vehicle.plate})`;
     return { ok: true };
