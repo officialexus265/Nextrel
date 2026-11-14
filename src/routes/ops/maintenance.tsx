@@ -31,10 +31,19 @@ function MaintenancePage() {
     },
     onError: (e: Error) => toast.error(e.message),
   });
+  const remove = useMutation({
+    mutationFn: (id: string) => deleteMaintenance({ data: { id } }),
+    onSuccess: () => {
+      toast.success("Reminder deleted");
+      qc.invalidateQueries({ queryKey: ["maintenance"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
   const create = useMutation({
     mutationFn: () =>
       saveMaintenance({
         data: {
+          id: editingId ?? undefined,
           vehicleId,
           title,
           dueOdometer: dueOdometer ? Number(dueOdometer) : undefined,
@@ -45,6 +54,7 @@ function MaintenancePage() {
     onSuccess: () => {
       toast.success(editingId ? "Reminder updated" : "Reminder saved");
       setOpen(false);
+      setEditingId(null);
       setTitle("");
       setDueOdometer("");
       setDueDate("");
