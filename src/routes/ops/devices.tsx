@@ -141,15 +141,17 @@ function DevicesPage() {
                 <td className="tabular px-2 py-2">{d.battery != null ? `${Math.round(d.battery)}%` : "—"}</td>
                 <td className="px-2 py-2">
                   <div className="flex flex-col items-start gap-1">
-                    <Button size="sm" variant="secondary" onClick={() => {
-                      setEditingId(d.id);
-                      setImei(d.imei);
-                      setProtocol(d.protocol);
-                      setDecoder(d.decoder);
-                      setCompanyId(d.companyId ?? "");
-                      setVehicleId(d.vehicleId ?? "");
-                      setOpen(true);
-                    }}>Edit</Button>
+                    {(session.data?.role === "super_admin" || session.data?.role === "field_admin" || session.data?.role === "company_admin") && (
+                      <Button size="sm" variant="secondary" onClick={() => {
+                        setEditingId(d.id);
+                        setImei(d.imei);
+                        setProtocol(d.protocol);
+                        setDecoder(d.decoder);
+                        setCompanyId(d.companyId ?? "");
+                        setVehicleId(d.vehicleId ?? "");
+                        setOpen(true);
+                      }}>Edit</Button>
+                    )}
                     <CalibrateButton deviceId={d.id} count={d.calibrationCount} />
                     <CommandButtons
                       deviceId={d.id}
