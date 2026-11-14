@@ -123,7 +123,7 @@ function DevicesPage() {
         <table className="w-full min-w-[860px] text-left text-sm">
           <thead className="text-xs uppercase tracking-[0.12em] text-subtle">
             <tr>
-              {["IMEI", "Decoder", "Vehicle", "Company", "Last seen", "GSM", "GPS", "Battery", "Device actions"].map((h) => (
+              {["IMEI", "Decoder", "Vehicle", "Company", "Last seen", "GSM", "GPS", "Battery", "Actions & assignment"].map((h) => (
                 <th key={h} className="whitespace-nowrap px-3 py-3 font-medium">{h}</th>
               ))}
             </tr>
@@ -140,7 +140,8 @@ function DevicesPage() {
                 <td className="tabular px-2 py-2">{d.gpsSignal ?? "—"}</td>
                 <td className="tabular px-2 py-2">{d.battery != null ? `${Math.round(d.battery)}%` : "—"}</td>
                 <td className="px-3 py-3 align-middle">
-                  <div className="flex min-w-[250px] flex-wrap items-center gap-1.5">
+                  <div className="min-w-[270px] space-y-2">
+                    <div className="flex flex-wrap items-center gap-1.5 rounded-[var(--radius-md)] border border-border bg-surface-2/70 p-1.5">
                     {(session.data?.role === "super_admin" || session.data?.role === "field_admin" || session.data?.role === "company_admin") && (
                       <Button size="sm" variant="secondary" onClick={() => {
                         setEditingId(d.id);
@@ -164,11 +165,11 @@ function DevicesPage() {
                         if (window.confirm(`Remove device ${d.imei}? Devices that have reported data or have calibration/command history are retained.`)) remove.mutate(d.id);
                       }}>Delete</Button>
                     )}
-                  </div>
-                  <label className="mt-2 flex min-w-[250px] items-center gap-2">
-                    <span className="shrink-0 text-xs text-subtle">Vehicle</span>
+                    </div>
+                  <label className="flex min-w-0 items-center gap-2 rounded-[var(--radius-md)] border border-border bg-surface px-2.5 py-2">
+                    <span className="shrink-0 text-[11px] font-medium uppercase tracking-wide text-subtle">Assign to</span>
                     <select
-                      className="h-8 min-w-0 flex-1 rounded-[var(--radius-xs)] border border-border bg-surface-2 px-2 text-xs"
+                      className="h-8 min-w-0 flex-1 rounded-[var(--radius-xs)] border border-border bg-surface-2 px-2.5 text-xs font-medium"
                       defaultValue={d.vehicleId ?? ""}
                       onChange={async (e) => {
                         try {
