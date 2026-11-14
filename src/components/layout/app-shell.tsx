@@ -1,4 +1,5 @@
 import { Link, useRouterState } from "@tanstack/react-router";
+import { useQuery } from "@tanstack/react-query";
 import {
   Activity,
   Bell,
@@ -32,7 +33,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { setViewAs } from "@/lib/fleet/api";
+import { listCompanies, setViewAs } from "@/lib/fleet/api";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import type { Role, SessionContext } from "@/lib/fleet/types";
 import { cn } from "@/lib/utils";
@@ -107,6 +108,11 @@ export function AppShell({
   children: React.ReactNode;
 }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const companies = useQuery({
+    queryKey: ["companies"],
+    queryFn: () => listCompanies(),
+    enabled: session.realRole === "super_admin",
+  });
   const items = navFor(session.role);
   const mobile = items.slice(0, 3);
   const overflow = items.slice(3);
@@ -176,20 +182,25 @@ export function AppShell({
                     View as <ChevronDown className="size-3.5" />
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent>
+                <DropdownMenuContent className="z-[10000]">
                   <DropdownMenuLabel>Platform</DropdownMenuLabel>
-                  <DropdownMenuItem onSelect={() => viewAs("super_admin", null)}>Platform owner</DropdownMenuItem>
-                  <DropdownMenuItem onSelect={() => viewAs("field_admin", null)}>Field staff</DropdownMenuItem>
                   <DropdownMenuSeparator />
-                  <DropdownMenuLabel>Meridian Logistics</DropdownMenuLabel>
-                  <DropdownMenuItem onSelect={() => viewAs("company_admin", "co_meridian")}>Admin</DropdownMenuItem>
-                  <DropdownMenuItem onSelect={() => viewAs("tracker", "co_meridian")}>Tracker</DropdownMenuItem>
-                  <DropdownMenuItem onSelect={() => viewAs("accounts", "co_meridian")}>Accounts</DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuLabel>Harbor Guard</DropdownMenuLabel>
-                  <DropdownMenuItem onSelect={() => viewAs("company_admin", "co_harbor")}>Admin</DropdownMenuItem>
-                  <DropdownMenuItem onSelect={() => viewAs("tracker", "co_harbor")}>Tracker</DropdownMenuItem>
-                  <DropdownMenuItem onSelect={() => viewAs("accounts", "co_harbor")}>Accounts</DropdownMenuItem>
+                  {companies.isLoading ? (
+                    <DropdownMenuLabel>Loading companies…</DropdownMenuLabel>
+                  ) : companies.isError ? (
+                    <DropdownMenuLabel>Could not load companies</DropdownMenuLabel>
+                  ) : (companies.data ?? []).length === 0 ? (
+                    <DropdownMenuLabel>No companies available</DropdownMenuLabel>
+                  ) : (
+                    (companies.data ?? []).map((company) => (
+                      <div key={company.id}>
+                        <DropdownMenuLabel>{company.name}</DropdownMenuLabel>
+                        <DropdownMenuItem onSelect={() => viewAs("company_admin", company.id)}>Admin</DropdownMenuItem>
+                        <DropdownMenuItem onSelect={() => viewAs("tracker", company.id)}>Tracker</DropdownMenuItem>
+                        <DropdownMenuItem onSelect={() => viewAs("accounts", company.id)}>Accounts</DropdownMenuItem>
+                      </div>
+                    ))
+                  )}
                 </DropdownMenuContent>
               </DropdownMenu>
             )}
