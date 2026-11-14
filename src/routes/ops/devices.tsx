@@ -187,6 +187,7 @@ function DevicesPage() {
                       ))}
                     </select>
                   </label>
+                  </div>
                 </td>
               </tr>
             ))}
