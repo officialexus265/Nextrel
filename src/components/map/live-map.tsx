@@ -25,6 +25,7 @@ export function LiveMap({ vehicles, geofences, selectedId, follow, fitNonce, map
   const [ready, setReady] = useState(false);
   const [baseMap, setBaseMap] = useState<"street" | "voyager" | "satellite">("street");
   const tileRef = useRef<import("leaflet").TileLayer | null>(null);
+  const satelliteLabelsRef = useRef<import("leaflet").TileLayer | null>(null);
 
   useEffect(() => {
     if (!hostRef.current || mapRef.current) return;
@@ -49,6 +50,7 @@ export function LiveMap({ vehicles, geofences, selectedId, follow, fitNonce, map
       markersRef.current.clear();
       trailRef.current = null;
       tileRef.current = null;
+      satelliteLabelsRef.current = null;
     };
   }, []);
 
@@ -63,12 +65,17 @@ export function LiveMap({ vehicles, geofences, selectedId, follow, fitNonce, map
     if (!map || !ready) return;
     void import("leaflet").then((L) => {
       tileRef.current?.remove();
+      satelliteLabelsRef.current?.remove();
+      satelliteLabelsRef.current = null;
       const layers = {
         street: L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { attribution: "&copy; OpenStreetMap contributors", maxZoom: 19 }),
-        voyager: L.tileLayer("https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png", { attribution: "&copy; OpenStreetMap &copy; CARTO", maxZoom: 20 }),
+        voyager: L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", { attribution: "&copy; OpenStreetMap contributors &copy; CARTO", maxZoom: 20 }),
         satellite: L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", { attribution: "Tiles &copy; Esri", maxZoom: 19 }),
       };
       tileRef.current = layers[baseMap].addTo(map);
+      if (baseMap === "satellite") {
+        satelliteLabelsRef.current = L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}", { attribution: "Roads & labels &copy; Esri", maxZoom: 19, pane: "overlayPane", opacity: 0.95 }).addTo(map);
+      }
     });
   }, [baseMap, ready]);
   useEffect(() => {
@@ -199,12 +206,12 @@ export function LiveMap({ vehicles, geofences, selectedId, follow, fitNonce, map
   return (
     <div className="relative h-full w-full">
       <div ref={hostRef} className={className ?? "h-full w-full"} />
-      <div className="absolute right-3 top-3 z-[700] flex flex-col gap-2">
-        <div className="overflow-hidden rounded-md border border-border bg-surface/95 shadow-md backdrop-blur">
+      <div className="absolute right-3 top-3 z-[700] flex flex-col items-end gap-3">
+        <div className="flex w-9 shrink-0 flex-col self-end overflow-hidden rounded-md border border-border bg-surface/95 shadow-md backdrop-blur">
           <button type="button" aria-label="Zoom in" title="Zoom in" onClick={() => mapRef.current?.zoomIn()} className="grid size-9 place-items-center border-b border-border text-xl leading-none hover:bg-surface-2">+</button>
           <button type="button" aria-label="Zoom out" title="Zoom out" onClick={() => mapRef.current?.zoomOut()} className="grid size-9 place-items-center text-xl leading-none hover:bg-surface-2">−</button>
         </div>
-        <select aria-label="Map type" title="Choose map type" value={baseMap} onChange={(event) => setBaseMap(event.target.value as typeof baseMap)} className="h-9 rounded-md border border-border bg-surface/95 px-2 text-xs font-medium text-fg shadow-md backdrop-blur">
+        <select aria-label="Map type" title="Choose map type" value={baseMap} onChange={(event) => setBaseMap(event.target.value as typeof baseMap)} className="h-9 w-[112px] shrink-0 self-end rounded-md border border-border bg-surface/95 px-2 text-xs font-medium text-fg shadow-md backdrop-blur">
           <option value="street">Street</option><option value="voyager">Light</option><option value="satellite">Satellite</option>
         </select>
       </div>
