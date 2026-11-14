@@ -1208,10 +1208,19 @@ export const assignDevice = createServerFn({ method: "POST" })
   .handler(async ({ context, data }) => {
     const { sql, session } = await ctx(context.userId);
     if (!["super_admin", "field_admin", "company_admin"].includes(session.role)) throw new Error("Forbidden");
-    await sql`update devices set vehicle_id = ${data.vehicleId} where id = ${data.deviceId}`;
+    const scope = await companyScope(sql, session);
+    const device = (await sql<{ company_id: string | null }>`select company_id from devices where id = ${data.deviceId}`)[0];
+    if (!device || !inScope(scope, device.company_id)) throw new Error("Device not found");
+    if (data.vehicleId) {
+      const vehicle = (await sql<{ company_id: string }>`select company_id from vehicles where id = ${data.vehicleId}`)[0];
+      if (!vehicle || vehicle.company_id !== device.company_id) {
+        throw new Error("You can only assign a device to a vehicle belonging to the same company");
+      }
+    }
+    await sql`update devices set vehicle_id = ${data.vehicleId} where id = ${data.deviceId} and company_id is not distinct from ${device.company_id}`;
     await sql`
-      insert into audit_logs (id, actor_id, action, target)
-      values (${nid("aud")}, ${session.userId}, 'device.assigned', ${data.deviceId})
+      insert into audit_logs (id, company_id, actor_id, action, target)
+      values (${nid("aud")}, ${device.company_id}, ${session.userId}, 'device.assigned', ${data.deviceId})
     `;
     return { ok: true };
   });
