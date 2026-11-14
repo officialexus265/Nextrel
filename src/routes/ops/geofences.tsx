@@ -48,6 +48,7 @@ function GeofencesPage() {
   const [start, setStart] = useState("06:00");
   const [end, setEnd] = useState("18:00");
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [focus, setFocus] = useState<[number, number] | null>(null);
   const [confirmId, setConfirmId] = useState<string | null>(null);
 
@@ -82,6 +83,7 @@ function GeofencesPage() {
 
   function beginDraw() {
     setDrawing(true);
+    setEditingId(null);
     setPoints([]);
     setSelectedId(null);
     setName("");
@@ -97,12 +99,13 @@ function GeofencesPage() {
             : { type: "route" as const, path: points, widthM: width };
       const schedule: FenceSchedule | null = timed ? { days, start, end } : null;
       return saveGeofence({
-        data: { name: name.trim(), kind, zoneType, groupName, geometry, schedule },
+        data: { id: editingId ?? undefined, name: name.trim(), kind, zoneType, groupName, geometry, schedule },
       });
     },
     onSuccess: () => {
-      toast.success("Geofence saved");
+      toast.success(editingId ? "Geofence updated" : "Geofence saved");
       setDrawing(false);
+      setEditingId(null);
       setPoints([]);
       setName("");
       qc.invalidateQueries({ queryKey: ["geofences"] });
@@ -270,7 +273,7 @@ function GeofencesPage() {
               </button>
             </div>
             <Button className="w-full" type="submit" disabled={!canSave || mut.isPending}>
-              Save geofence
+              {editingId ? "Save changes" : "Save geofence"}
             </Button>
           </form>
         ) : (
@@ -290,13 +293,45 @@ function GeofencesPage() {
                     setConfirmId(null);
                   }}
                   onToggle={() => toggle.mutate({ id: g.id, active: !g.active })}
+                  onEdit={() => {
+                    setEditingId(g.id);
+                    setDrawing(true);
+                    setKind(g.kind);
+                    setZone(g.zoneType);
+                    setName(g.name);
+                    setGroupName(g.groupName ?? "Client sites");
+                    if (g.geometry.type === "circle") {
+                      setPoints([[g.geometry.lat, g.geometry.lng]]);
+                      setRadius(g.geometry.radiusM);
+                    } else if (g.geometry.type === "polygon") {
+                      setPoints(g.geometry.points);
+                    } else {
+                      setPoints(g.geometry.path);
+                      setWidth(g.geometry.widthM);
+                    }
+                    if (g.schedule) {
+                      setTimed(true);
+                      setDays(g.schedule.days);
+                      setStart(g.schedule.start);
+                      setEnd(g.schedule.end);
+                    } else {
+                      setTimed(false);
+                    }
+                    setSelectedId(g.id);
+                    setFocus(centerOf(g));
+                  }}
                   onAskRemove={() => setConfirmId(g.id)}
                   onCancelRemove={() => setConfirmId(null)}
                   onRemove={async () => {
-                    await deleteGeofence({ data: { id: g.id } });
-                    if (selectedId === g.id) setSelectedId(null);
-                    setConfirmId(null);
-                    qc.invalidateQueries({ queryKey: ["geofences"] });
+                    try {
+                      await deleteGeofence({ data: { id: g.id } });
+                      if (selectedId === g.id) setSelectedId(null);
+                      setConfirmId(null);
+                      toast.success("Geofence removed");
+                      qc.invalidateQueries({ queryKey: ["geofences"] });
+                    } catch (error) {
+                      toast.error(error instanceof Error ? error.message : "Could not remove geofence");
+                    }
                   }}
                 />
               ))}
@@ -336,6 +371,7 @@ function FenceRow({
   canEdit,
   onSelect,
   onToggle,
+  onEdit,
   onAskRemove,
   onCancelRemove,
   onRemove,
@@ -346,6 +382,7 @@ function FenceRow({
   canEdit: boolean;
   onSelect: () => void;
   onToggle: () => void;
+  onEdit: () => void;
   onAskRemove: () => void;
   onCancelRemove: () => void;
   onRemove: () => void;
@@ -370,6 +407,7 @@ function FenceRow({
       </button>
       {canEdit && (
         <div className="mt-2 flex gap-2">
+          <Button size="sm" variant="secondary" onClick={onEdit}>Edit</Button>
           <Button size="sm" variant="secondary" onClick={onToggle}>
             {fence.active ? "Pause" : "Arm"}
           </Button>
