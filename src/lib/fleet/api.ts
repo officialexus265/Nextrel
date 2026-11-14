@@ -2255,7 +2255,8 @@ export const listTeam = createServerFn({ method: "GET" })
       name: string | null;
       email: string | null;
       created_at: string;
-    }>`select user_id, role, company_id, name, email, created_at from profiles order by created_at`;
+      active: boolean;
+    }>`select user_id, role, company_id, name, email, created_at, active from profiles order by created_at`;
     const invites = await sql<{
       id: string;
       email: string;
