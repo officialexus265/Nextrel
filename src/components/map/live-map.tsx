@@ -20,7 +20,6 @@ export function LiveMap({ vehicles, geofences, selectedId, follow, fitNonce, map
   const geoRef = useRef<import("leaflet").LayerGroup | null>(null);
   const trailRef = useRef<import("leaflet").Polyline | null>(null);
   const historyRef = useRef<Map<string, [number, number][]>>(new Map());
-  const fittedRef = useRef(false);
   const onSelectRef = useRef(onSelect);
   onSelectRef.current = onSelect;
   const [ready, setReady] = useState(false);
