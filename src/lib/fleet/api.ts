@@ -3310,15 +3310,15 @@ export const deleteDevice = createServerFn({ method: "POST" })
     const { sql, session } = await ctx(context.userId);
     if (![ "super_admin", "field_admin", "company_admin" ].includes(session.role)) throw new Error("Forbidden");
     const scope = await companyScope(sql, session);
-    const device = (await sql<{ id: string; company_id: string | null; imei: string }>`select id, company_id, imei from devices where id = ${data.id}`)[0];
+    const device = (await sql<{ id: string; company_id: string | null; imei: string; last_seen: string | null }>`select id, company_id, imei, last_seen from devices where id = ${data.id}`)[0];
     if (!device || !inScope(scope, device.company_id)) throw new Error("Device not found");
     const protectedRows = await sql<{ calibrations: number; commands: number }>`
       select
         (select count(*)::int from device_calibrations where device_id = ${data.id}) as calibrations,
         (select count(*)::int from device_commands where device_id = ${data.id}) as commands
     `;
-    if ((protectedRows[0]?.calibrations ?? 0) > 0 || (protectedRows[0]?.commands ?? 0) > 0) {
-      throw new Error("This device has calibration or command history. It cannot be permanently removed; retain the record for audit purposes.");
+    if (device.last_seen || (protectedRows[0]?.calibrations ?? 0) > 0 || (protectedRows[0]?.commands ?? 0) > 0) {
+      throw new Error("This device has been used or has calibration/command history. Unassign it or replace it; its record is retained for audit purposes.");
     }
     await sql`delete from devices where id = ${data.id}`;
     await sql`insert into audit_logs (id, company_id, actor_id, action, target) values (${nid("aud")}, ${device.company_id}, ${session.userId}, 'device.deleted', ${device.imei})`;
