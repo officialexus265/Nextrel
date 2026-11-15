@@ -154,7 +154,7 @@ function DevicesPage() {
         <table className="w-full min-w-[860px] text-left text-sm">
           <thead className="text-xs uppercase tracking-[0.12em] text-subtle">
             <tr>
-              {["IMEI", "Decoder", "Vehicle", "Company", "Last seen", "GSM", "GPS", "Battery", "Actions & assignment"].map((h) => (
+              {["IMEI", "Decoder", "Capabilities", "Vehicle", "Company", "Last seen", "GSM", "GPS", "Battery", "Actions & assignment"].map((h) => (
                 <th key={h} className="whitespace-nowrap px-3 py-3 font-medium">{h}</th>
               ))}
             </tr>
@@ -164,6 +164,14 @@ function DevicesPage() {
               <tr key={d.id} className="border-t border-border align-middle hover:bg-surface-2/40">
                 <td className="px-2 py-2 font-mono text-xs">{d.imei}</td>
                 <td className="px-2 py-2"><Badge tone="muted">{d.decoder}</Badge></td>
+                <td className="px-2 py-2">
+                  <div className="flex max-w-[240px] flex-wrap gap-1">
+                    {d.capabilities.length ? d.capabilities.map((capability) => (
+                      <Badge key={capability} tone="muted">{DEVICE_CAPABILITY_LABELS[capability]}</Badge>
+                    )) : <span className="text-xs text-subtle">Not declared</span>}
+                  </div>
+                  {d.capabilitySource === "manual" && <span className="mt-1 block text-[10px] text-subtle">Manually verified</span>}
+                </td>
                 <td className="px-2 py-2">{d.vehicleName ?? "—"}</td>
                 <td className="px-2 py-2 text-muted">{d.companyName ?? "—"}</td>
                 <td className="px-2 py-2 text-muted">{d.lastSeen ? new Date(d.lastSeen).toLocaleString() : "Never"}</td>
@@ -181,6 +189,8 @@ function DevicesPage() {
                         setDecoder(d.decoder);
                         setCompanyId(d.companyId ?? "");
                         setVehicleId(d.vehicleId ?? "");
+                        setCapabilities(d.capabilities);
+                        setConnectionMode(d.connectionMode);
                         setOpen(true);
                       }}>Edit</Button>
                     )}
@@ -190,6 +200,8 @@ function DevicesPage() {
                       role={session.data?.role}
                       lastKind={d.lastCommandKind}
                       lastStatus={d.lastCommandStatus}
+                      capabilities={d.capabilities}
+                      connectionMode={d.connectionMode}
                     />
                     {(session.data?.role === "super_admin" || session.data?.role === "field_admin" || session.data?.role === "company_admin") && (
                       <Button size="sm" variant="ghost" disabled={remove.isPending} onClick={() => {
