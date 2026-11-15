@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { assignDevice, deleteDevice, filePacket, getAppSession, listCalibrations, listCompanies, listDevices, listIngestJournal, listVehicles, queueDeviceCommand, saveCalibration, saveDevice } from "@/lib/fleet/api";
 import { DECODER_NAMES, decode, samplePacket, type DecoderName, type NormalizedFix } from "@/lib/fleet/decoders";
 import { commandLabel } from "@/lib/fleet/labels";
+import { DEVICE_CAPABILITIES, DEVICE_CAPABILITY_LABELS, type DeviceCapability, type DeviceConnectionMode } from "@/lib/fleet/types";
 import { PageHeader } from "@/components/layout/app-shell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -29,11 +30,13 @@ function DevicesPage() {
   const [decoder, setDecoder] = useState("generic_http");
   const [companyId, setCompanyId] = useState("");
   const [vehicleId, setVehicleId] = useState("");
+  const [capabilities, setCapabilities] = useState<DeviceCapability[]>([]);
+  const [connectionMode, setConnectionMode] = useState<DeviceConnectionMode>("live");
 
   const mut = useMutation({
     mutationFn: () =>
       saveDevice({
-        data: { id: editingId ?? undefined, imei, protocol, decoder, companyId: companyId || (companies.data?.[0]?.id ?? ""), vehicleId: vehicleId || null },
+        data: { id: editingId ?? undefined, imei, protocol, decoder, capabilities, connectionMode, companyId: companyId || (companies.data?.[0]?.id ?? ""), vehicleId: vehicleId || null },
       }),
     onSuccess: () => {
       toast.success(editingId ? "Device updated" : "Device registered");
@@ -44,6 +47,8 @@ function DevicesPage() {
       setDecoder("generic_http");
       setCompanyId("");
       setVehicleId("");
+      setCapabilities([]);
+      setConnectionMode("live");
       qc.invalidateQueries({ queryKey: ["devices"] });
     },
     onError: (e: Error) => toast.error(e.message),
