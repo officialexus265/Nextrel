@@ -78,6 +78,8 @@ function DevicesPage() {
                 setDecoder("generic_http");
                 setCompanyId("");
                 setVehicleId("");
+                setCapabilities([]);
+                setConnectionMode("live");
               }}>Register device</Button>
             </DialogTrigger>
             <DialogContent title={editingId ? "Edit device" : "Register device"}>
@@ -151,7 +153,7 @@ function DevicesPage() {
       />
       <PacketBench />
       <div className="overflow-x-auto px-4 pb-10 md:px-6">
-        <table className="w-full min-w-[860px] text-left text-sm">
+        <table className="w-full min-w-[1040px] text-left text-sm">
           <thead className="text-xs uppercase tracking-[0.12em] text-subtle">
             <tr>
               {["IMEI", "Decoder", "Capabilities", "Vehicle", "Company", "Last seen", "GSM", "GPS", "Battery", "Actions & assignment"].map((h) => (
