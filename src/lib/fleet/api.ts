@@ -1224,8 +1224,11 @@ export const saveDevice = createServerFn({ method: "POST" })
     const duplicate = (await sql<{ id: string }>`select id from devices where imei = ${data.imei} and (${data.id ?? ""} = '' or id <> ${data.id ?? ""}) limit 1`)[0];
     if (duplicate) throw new Error("That IMEI is already registered to another device");
     if (data.id) {
-      const current = (await sql<{ company_id: string | null }>`select company_id from devices where id = ${data.id}`)[0];
+      const current = (await sql<{ company_id: string | null; connection_mode: string }>`select company_id, connection_mode from devices where id = ${data.id}`)[0];
       if (!current || !inScope(scope, current.company_id)) throw new Error("Device not found");
+      if (data.connectionMode === "simulated" && session.role !== "super_admin" && current.connection_mode !== "simulated") {
+        throw new Error("Only a super admin can place a device into simulator mode");
+      }
       await sql`update devices
         set imei = ${data.imei}, protocol = ${data.protocol}, decoder = ${data.decoder},
             capabilities = ${JSON.stringify(data.capabilities)}::jsonb,
@@ -1336,16 +1339,22 @@ export const queueDeviceCommand = createServerFn({ method: "POST" })
     const scope = await companyScope(sql, session);
     const device = data.deviceId
       ? (
-          await sql<{ id: string; company_id: string | null; vehicle_id: string | null; imei: string; connection_mode: string }>`
-            select id, company_id, vehicle_id, imei, connection_mode from devices where id = ${data.deviceId} limit 1
+          await sql<{ id: string; company_id: string | null; vehicle_id: string | null; imei: string; connection_mode: string; capabilities: unknown }>`
+            select id, company_id, vehicle_id, imei, connection_mode, capabilities from devices where id = ${data.deviceId} limit 1
           `
         )[0]
       : (
           await sql<{ id: string; company_id: string | null; vehicle_id: string | null; imei: string; connection_mode: string }>`
-            select id, company_id, vehicle_id, imei, connection_mode from devices where vehicle_id = ${data.vehicleId ?? ""} limit 1
+            select id, company_id, vehicle_id, imei, connection_mode, capabilities from devices where vehicle_id = ${data.vehicleId ?? ""} limit 1
           `
         )[0];
     if (!device || !inScope(scope, device.company_id)) throw new Error("Not found");
+    const requiredCapability: DeviceCapability =
+      data.kind === "locate" ? "remote_locate" : data.kind === "restart" ? "remote_restart" : "camera_snapshot";
+    const deviceCapabilities = Array.isArray(device.capabilities) ? device.capabilities : [];
+    if (!deviceCapabilities.includes(requiredCapability)) {
+      throw new Error("This device has not declared the required hardware capability");
+    }
     const id = nid("cmd");
     await sql`
       insert into device_commands (id, company_id, device_id, vehicle_id, kind, status, requested_by)
