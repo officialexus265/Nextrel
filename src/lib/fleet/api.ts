@@ -5,6 +5,7 @@ import { nid, toIso } from "@/lib/utils";
 import { inScope, parseGeom } from "./session";
 import { parseSchedule, reverseGeocode } from "./geo";
 import { decode, sniffDecoder, DECODER_NAMES, isDecoderName, type DecoderName, type NormalizedFix } from "./decoders";
+import { DEVICE_CAPABILITIES, type DeviceCapability, type DeviceConnectionMode } from "./types";
 import { behaviorLabel } from "./labels";
 import { bucketKey, briefAxis, round1, type BriefWindow } from "./brief";
 import {
@@ -1145,6 +1146,10 @@ export const listDevices = createServerFn({ method: "GET" })
       imei: string;
       protocol: string;
       decoder: string;
+      capabilities: unknown;
+      capability_source: string;
+      capabilities_verified_at: string | null;
+      connection_mode: string;
       last_seen: string | null;
       gsm_signal: number | null;
       gps_signal: number | null;
@@ -1154,7 +1159,8 @@ export const listDevices = createServerFn({ method: "GET" })
       cal_count: number | null;
     }>`
       select d.id, d.company_id, c.name as company_name, d.vehicle_id, v.name as vehicle_name,
-        d.imei, d.protocol, d.decoder, d.last_seen, d.gsm_signal, d.gps_signal, d.battery,
+        d.imei, d.protocol, d.decoder, d.capabilities, d.capability_source,
+        d.capabilities_verified_at, d.connection_mode, d.last_seen, d.gsm_signal, d.gps_signal, d.battery,
         (select kind from device_commands where device_id = d.id order by created_at desc limit 1) as last_kind,
         (select status from device_commands where device_id = d.id order by created_at desc limit 1) as last_status,
         (select count(*)::int from device_calibrations where device_id = d.id) as cal_count
@@ -1175,6 +1181,12 @@ export const listDevices = createServerFn({ method: "GET" })
           imei: r.imei,
           protocol: r.protocol,
           decoder: r.decoder,
+          capabilities: Array.isArray(r.capabilities)
+            ? r.capabilities.filter((value): value is DeviceCapability => DEVICE_CAPABILITIES.includes(value as DeviceCapability))
+            : [],
+          capabilitySource: r.capability_source as "unverified" | "manual" | "protocol" | "reported",
+          capabilitiesVerifiedAt: r.capabilities_verified_at ? toIso(r.capabilities_verified_at) : null,
+          connectionMode: r.connection_mode as DeviceConnectionMode,
           lastSeen: r.last_seen ? toIso(r.last_seen) : null,
           gsmSignal: r.gsm_signal,
           gpsSignal: r.gps_signal,
@@ -1193,6 +1205,8 @@ export const saveDevice = createServerFn({ method: "POST" })
     imei: z.string().min(8),
     protocol: z.string(),
     decoder: z.string(),
+    capabilities: z.array(z.enum(DEVICE_CAPABILITIES)).default([]),
+    connectionMode: z.enum(["live", "simulated"]).default("live"),
     companyId: z.string(),
     vehicleId: z.string().nullable().optional(),
   }))
@@ -1210,12 +1224,21 @@ export const saveDevice = createServerFn({ method: "POST" })
     if (data.id) {
       const current = (await sql<{ company_id: string | null }>`select company_id from devices where id = ${data.id}`)[0];
       if (!current || !inScope(scope, current.company_id)) throw new Error("Device not found");
-      await sql`update devices set imei = ${data.imei}, protocol = ${data.protocol}, decoder = ${data.decoder}, company_id = ${data.companyId}, vehicle_id = ${data.vehicleId ?? null} where id = ${data.id}`;
+      await sql`update devices
+        set imei = ${data.imei}, protocol = ${data.protocol}, decoder = ${data.decoder},
+            capabilities = ${JSON.stringify(data.capabilities)}::jsonb,
+            capability_source = 'manual', capabilities_verified_at = now(),
+            connection_mode = ${data.connectionMode},
+            company_id = ${data.companyId}, vehicle_id = ${data.vehicleId ?? null}
+        where id = ${data.id}`;
       await sql`insert into audit_logs (id, company_id, actor_id, action, target) values (${nid("aud")}, ${data.companyId}, ${session.userId}, 'device.updated', ${data.imei})`;
       return { ok: true, id: data.id };
     }
     const id = nid("dev");
-    await sql`insert into devices (id, company_id, vehicle_id, imei, protocol, decoder, secret) values (${id}, ${data.companyId}, ${data.vehicleId ?? null}, ${data.imei}, ${data.protocol}, ${data.decoder}, ${"sec_" + data.imei.slice(-6)})`;
+    await sql`insert into devices
+      (id, company_id, vehicle_id, imei, protocol, decoder, secret, capabilities, capability_source, capabilities_verified_at, connection_mode)
+      values (${id}, ${data.companyId}, ${data.vehicleId ?? null}, ${data.imei}, ${data.protocol}, ${data.decoder},
+        ${"sec_" + data.imei.slice(-6)}, ${JSON.stringify(data.capabilities)}::jsonb, 'manual', now(), ${data.connectionMode})`;
     await sql`insert into audit_logs (id, company_id, actor_id, action, target) values (${nid("aud")}, ${data.companyId}, ${session.userId}, 'device.registered', ${data.imei})`;
     return { ok: true, id };
   });
@@ -1311,13 +1334,13 @@ export const queueDeviceCommand = createServerFn({ method: "POST" })
     const scope = await companyScope(sql, session);
     const device = data.deviceId
       ? (
-          await sql<{ id: string; company_id: string | null; vehicle_id: string | null; imei: string }>`
-            select id, company_id, vehicle_id, imei from devices where id = ${data.deviceId} limit 1
+          await sql<{ id: string; company_id: string | null; vehicle_id: string | null; imei: string; connection_mode: string }>`
+            select id, company_id, vehicle_id, imei, connection_mode from devices where id = ${data.deviceId} limit 1
           `
         )[0]
       : (
-          await sql<{ id: string; company_id: string | null; vehicle_id: string | null; imei: string }>`
-            select id, company_id, vehicle_id, imei from devices where vehicle_id = ${data.vehicleId ?? ""} limit 1
+          await sql<{ id: string; company_id: string | null; vehicle_id: string | null; imei: string; connection_mode: string }>`
+            select id, company_id, vehicle_id, imei, connection_mode from devices where vehicle_id = ${data.vehicleId ?? ""} limit 1
           `
         )[0];
     if (!device || !inScope(scope, device.company_id)) throw new Error("Not found");
@@ -1334,6 +1357,18 @@ export const queueDeviceCommand = createServerFn({ method: "POST" })
     `;
     await (await import("./simulate")).fulfillCommand(sql, id);
     return { id };
+  });
+
+.fulfillCommand(sql, id);
+      return { id, status: "simulated" as const };
+    }
+    await sql`
+      update device_commands
+      set status = 'awaiting_gateway',
+          result = ${"No live command gateway is connected; no command was sent."}
+      where id = ${id}
+    `;
+    return { id, status: "awaiting_gateway" as const };
   });
 
 export const listGeofences = createServerFn({ method: "GET" })
