@@ -5,7 +5,6 @@ import { nid, toIso } from "@/lib/utils";
 import { inScope, parseGeom } from "./session";
 import { parseSchedule, reverseGeocode } from "./geo";
 import { decode, sniffDecoder, DECODER_NAMES, isDecoderName, type DecoderName, type NormalizedFix } from "./decoders";
-import { DEVICE_CAPABILITIES, type DeviceCapability, type DeviceConnectionMode } from "./types";
 import { behaviorLabel } from "./labels";
 import { bucketKey, briefAxis, round1, type BriefWindow } from "./brief";
 import {
@@ -19,6 +18,9 @@ import {
   type FlagKey,
 } from "./control";
 import {
+  DEVICE_CAPABILITIES,
+  type DeviceCapability,
+  type DeviceConnectionMode,
   AlertRow,
   AlertRuleConfig,
   AlertRuleRow,
