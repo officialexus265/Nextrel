@@ -101,6 +101,32 @@ function DevicesPage() {
                     {DECODER_NAMES.map((p) => <option key={p}>{p}</option>)}
                   </select>
                 </div>
+                <div className="space-y-1">
+                  <Label>Connection mode</Label>
+                  <select className="h-10 w-full rounded-[var(--radius-sm)] border border-border bg-surface-2 px-3 text-sm" value={connectionMode} onChange={(e) => setConnectionMode(e.target.value as DeviceConnectionMode)}>
+                    <option value="live">Live tracker</option>
+                    <option value="simulated">Simulator / lab device</option>
+                  </select>
+                  <p className="text-xs text-muted">Live devices will not report successful commands until a real downlink gateway is connected.</p>
+                </div>
+                <div className="space-y-2 rounded-[var(--radius-md)] border border-border p-3">
+                  <div>
+                    <Label>Hardware capabilities</Label>
+                    <p className="mt-1 text-xs text-muted">Select only features confirmed by the tracker model, wiring and manufacturer documentation.</p>
+                  </div>
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    {DEVICE_CAPABILITIES.map((capability) => (
+                      <label key={capability} className="flex items-start gap-2 text-sm">
+                        <input type="checkbox" className="mt-1 accent-current" checked={capabilities.includes(capability)}
+                          onChange={(e) => setCapabilities((current) => e.target.checked ? [...current, capability] : current.filter((item) => item !== capability))} />
+                        <span>{DEVICE_CAPABILITY_LABELS[capability]}</span>
+                      </label>
+                    ))}
+                  </div>
+                  {capabilities.some((capability) => capability === "engine_immobilize" || capability === "engine_restore") && (
+                    <p className="text-xs text-amber-700">Engine immobilizer hardware is recorded, but remote engine commands remain unavailable until a verified device gateway and vehicle safety interlocks are implemented.</p>
+                  )}
+                </div>
                 {companies.data && (
                   <div className="space-y-1">
                     <Label>Company</Label>
