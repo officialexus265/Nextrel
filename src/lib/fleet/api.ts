@@ -1227,11 +1227,8 @@ export const saveDevice = createServerFn({ method: "POST" })
     const duplicate = (await sql<{ id: string }>`select id from devices where imei = ${data.imei} and (${data.id ?? ""} = '' or id <> ${data.id ?? ""}) limit 1`)[0];
     if (duplicate) throw new Error("That IMEI is already registered to another device");
     if (data.id) {
-      const current = (await sql<{ company_id: string | null; connection_mode: string }>`select company_id, connection_mode from devices where id = ${data.id}`)[0];
+      const current = (await sql<{ company_id: string | null }>`select company_id from devices where id = ${data.id}`)[0];
       if (!current || !inScope(scope, current.company_id)) throw new Error("Device not found");
-      if (data.connectionMode === "simulated" && session.role !== "super_admin" && current.connection_mode !== "simulated") {
-        throw new Error("Only a super admin can place a device into simulator mode");
-      }
       await sql`update devices
         set imei = ${data.imei}, protocol = ${data.protocol}, decoder = ${data.decoder},
             capabilities = ${JSON.stringify(data.capabilities)}::jsonb,
