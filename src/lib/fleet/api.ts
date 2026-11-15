@@ -1355,11 +1355,8 @@ export const queueDeviceCommand = createServerFn({ method: "POST" })
       insert into audit_logs (id, company_id, actor_id, action, target)
       values (${nid("aud")}, ${device.company_id}, ${session.userId}, ${`device.${data.kind}`}, ${device.imei})
     `;
-    await (await import("./simulate")).fulfillCommand(sql, id);
-    return { id };
-  });
-
-.fulfillCommand(sql, id);
+    if (device.connection_mode === "simulated") {
+      await (await import("./simulate")).fulfillCommand(sql, id);
       return { id, status: "simulated" as const };
     }
     await sql`
@@ -1370,6 +1367,7 @@ export const queueDeviceCommand = createServerFn({ method: "POST" })
     `;
     return { id, status: "awaiting_gateway" as const };
   });
+
 
 export const listGeofences = createServerFn({ method: "GET" })
   .middleware([authMiddleware])
