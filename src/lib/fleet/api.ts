@@ -1347,7 +1347,7 @@ export const queueDeviceCommand = createServerFn({ method: "POST" })
           `
         )[0]
       : (
-          await sql<{ id: string; company_id: string | null; vehicle_id: string | null; imei: string; connection_mode: string }>`
+          await sql<{ id: string; company_id: string | null; vehicle_id: string | null; imei: string; connection_mode: string; capabilities: unknown }>`
             select id, company_id, vehicle_id, imei, connection_mode, capabilities from devices where vehicle_id = ${data.vehicleId ?? ""} limit 1
           `
         )[0];
