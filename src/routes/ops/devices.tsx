@@ -105,7 +105,7 @@ function DevicesPage() {
                 </div>
                 <div className="space-y-1">
                   <Label>Connection mode</Label>
-                  <select className="h-10 w-full rounded-[var(--radius-sm)] border border-border bg-surface-2 px-3 text-sm" value={connectionMode} onChange={(e) => setConnectionMode(e.target.value as DeviceConnectionMode)}>
+                  <select disabled={session.data?.role !== "super_admin"} className="h-10 w-full rounded-[var(--radius-sm)] border border-border bg-surface-2 px-3 text-sm" value={connectionMode} onChange={(e) => setConnectionMode(e.target.value as DeviceConnectionMode)}>
                     <option value="live">Live tracker</option>
                     <option value="simulated">Simulator / lab device</option>
                   </select>
