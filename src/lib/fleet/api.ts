@@ -1215,6 +1215,9 @@ export const saveDevice = createServerFn({ method: "POST" })
   .handler(async ({ context, data }) => {
     const { sql, session } = await ctx(context.userId);
     if (!["super_admin", "field_admin", "company_admin"].includes(session.role)) throw new Error("Forbidden");
+    if (data.connectionMode === "simulated" && session.role !== "super_admin") {
+      throw new Error("Only a super admin can register a simulated device");
+    }
     const scope = await companyScope(sql, session);
     if (!inScope(scope, data.companyId)) throw new Error("Forbidden");
     if (data.vehicleId) {
