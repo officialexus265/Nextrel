@@ -18,6 +18,9 @@ import {
   type FlagKey,
 } from "./control";
 import {
+  DEVICE_CAPABILITIES,
+  type DeviceCapability,
+  type DeviceConnectionMode,
   AlertRow,
   AlertRuleConfig,
   AlertRuleRow,
@@ -1143,8 +1146,14 @@ export const listDevices = createServerFn({ method: "GET" })
       vehicle_id: string | null;
       vehicle_name: string | null;
       imei: string;
+      manufacturer: string | null;
+      model: string | null;
       protocol: string;
       decoder: string;
+      capabilities: unknown;
+      capability_source: string;
+      capabilities_verified_at: string | null;
+      connection_mode: string;
       last_seen: string | null;
       gsm_signal: number | null;
       gps_signal: number | null;
@@ -1154,7 +1163,9 @@ export const listDevices = createServerFn({ method: "GET" })
       cal_count: number | null;
     }>`
       select d.id, d.company_id, c.name as company_name, d.vehicle_id, v.name as vehicle_name,
-        d.imei, d.protocol, d.decoder, d.last_seen, d.gsm_signal, d.gps_signal, d.battery,
+        d.imei, d.manufacturer, d.model, d.protocol, d.decoder, d.capabilities,
+        d.capability_source, d.capabilities_verified_at, d.connection_mode,
+        d.last_seen, d.gsm_signal, d.gps_signal, d.battery,
         (select kind from device_commands where device_id = d.id order by created_at desc limit 1) as last_kind,
         (select status from device_commands where device_id = d.id order by created_at desc limit 1) as last_status,
         (select count(*)::int from device_calibrations where device_id = d.id) as cal_count
@@ -1165,25 +1176,23 @@ export const listDevices = createServerFn({ method: "GET" })
     `;
     return rows
       .filter((r) => session.role === "super_admin" || inScope(scope, r.company_id))
-      .map(
-        (r): DeviceRow => ({
-          id: r.id,
-          companyId: r.company_id,
-          companyName: r.company_name,
-          vehicleId: r.vehicle_id,
-          vehicleName: r.vehicle_name,
-          imei: r.imei,
-          protocol: r.protocol,
-          decoder: r.decoder,
-          lastSeen: r.last_seen ? toIso(r.last_seen) : null,
-          gsmSignal: r.gsm_signal,
-          gpsSignal: r.gps_signal,
-          battery: r.battery,
-          lastCommandKind: r.last_kind,
-          lastCommandStatus: r.last_status,
-          calibrationCount: Number(r.cal_count ?? 0),
-        }),
-      );
+      .map((r): DeviceRow => {
+        const rawCapabilities = typeof r.capabilities === "string" ? JSON.parse(r.capabilities) as unknown : r.capabilities;
+        const capabilities = Array.isArray(rawCapabilities)
+          ? rawCapabilities.filter((value): value is DeviceCapability => DEVICE_CAPABILITIES.includes(value as DeviceCapability))
+          : [];
+        return {
+          id: r.id, companyId: r.company_id, companyName: r.company_name,
+          vehicleId: r.vehicle_id, vehicleName: r.vehicle_name, imei: r.imei,
+          manufacturer: r.manufacturer, model: r.model, protocol: r.protocol, decoder: r.decoder,
+          capabilities, capabilitySource: r.capability_source as DeviceRow["capabilitySource"],
+          capabilitiesVerifiedAt: r.capabilities_verified_at ? toIso(r.capabilities_verified_at) : null,
+          connectionMode: r.connection_mode as DeviceConnectionMode,
+          lastSeen: r.last_seen ? toIso(r.last_seen) : null, gsmSignal: r.gsm_signal,
+          gpsSignal: r.gps_signal, battery: r.battery, lastCommandKind: r.last_kind,
+          lastCommandStatus: r.last_status, calibrationCount: Number(r.cal_count ?? 0),
+        };
+      });
   });
 
 export const saveDevice = createServerFn({ method: "POST" })
@@ -1193,12 +1202,19 @@ export const saveDevice = createServerFn({ method: "POST" })
     imei: z.string().min(8),
     protocol: z.string(),
     decoder: z.string(),
+    manufacturer: z.string().trim().max(120).default(""),
+    model: z.string().trim().max(120).default(""),
+    capabilities: z.array(z.enum(DEVICE_CAPABILITIES)).max(40).default([]),
+    connectionMode: z.enum(["live", "simulated"]).default("live"),
     companyId: z.string(),
     vehicleId: z.string().nullable().optional(),
   }))
   .handler(async ({ context, data }) => {
     const { sql, session } = await ctx(context.userId);
     if (!["super_admin", "field_admin", "company_admin"].includes(session.role)) throw new Error("Forbidden");
+    if (data.connectionMode === "simulated" && session.realRole !== "super_admin" && !data.id) {
+      throw new Error("Only a platform administrator can register a simulated device");
+    }
     const scope = await companyScope(sql, session);
     if (!inScope(scope, data.companyId)) throw new Error("Forbidden");
     if (data.vehicleId) {
@@ -1208,14 +1224,32 @@ export const saveDevice = createServerFn({ method: "POST" })
     const duplicate = (await sql<{ id: string }>`select id from devices where imei = ${data.imei} and (${data.id ?? ""} = '' or id <> ${data.id ?? ""}) limit 1`)[0];
     if (duplicate) throw new Error("That IMEI is already registered to another device");
     if (data.id) {
-      const current = (await sql<{ company_id: string | null }>`select company_id from devices where id = ${data.id}`)[0];
+      const current = (await sql<{ company_id: string | null; connection_mode: string }>`select company_id, connection_mode from devices where id = ${data.id}`)[0];
       if (!current || !inScope(scope, current.company_id)) throw new Error("Device not found");
-      await sql`update devices set imei = ${data.imei}, protocol = ${data.protocol}, decoder = ${data.decoder}, company_id = ${data.companyId}, vehicle_id = ${data.vehicleId ?? null} where id = ${data.id}`;
+      if (data.connectionMode === "simulated" && session.realRole !== "super_admin" && current.connection_mode !== "simulated") {
+        throw new Error("Only a platform administrator can enable simulator mode");
+      }
+      await sql`update devices
+        set imei = ${data.imei}, manufacturer = ${data.manufacturer || null}, model = ${data.model || null},
+            protocol = ${data.protocol}, decoder = ${data.decoder},
+            capabilities = ${JSON.stringify(data.capabilities)}::jsonb,
+            capability_source = ${data.capabilities.length ? "manual" : "unverified"},
+            capabilities_verified_at = ${data.capabilities.length ? new Date() : null},
+            connection_mode = ${data.connectionMode},
+            company_id = ${data.companyId}, vehicle_id = ${data.vehicleId ?? null}
+        where id = ${data.id}`;
       await sql`insert into audit_logs (id, company_id, actor_id, action, target) values (${nid("aud")}, ${data.companyId}, ${session.userId}, 'device.updated', ${data.imei})`;
       return { ok: true, id: data.id };
     }
     const id = nid("dev");
-    await sql`insert into devices (id, company_id, vehicle_id, imei, protocol, decoder, secret) values (${id}, ${data.companyId}, ${data.vehicleId ?? null}, ${data.imei}, ${data.protocol}, ${data.decoder}, ${"sec_" + data.imei.slice(-6)})`;
+    await sql`insert into devices
+      (id, company_id, vehicle_id, imei, manufacturer, model, protocol, decoder, secret,
+       capabilities, capability_source, capabilities_verified_at, connection_mode)
+      values (${id}, ${data.companyId}, ${data.vehicleId ?? null}, ${data.imei},
+        ${data.manufacturer || null}, ${data.model || null}, ${data.protocol}, ${data.decoder},
+        ${"sec_" + data.imei.slice(-6)}, ${JSON.stringify(data.capabilities)}::jsonb,
+        ${data.capabilities.length ? "manual" : "unverified"},
+        ${data.capabilities.length ? new Date() : null}, ${data.connectionMode})`;
     await sql`insert into audit_logs (id, company_id, actor_id, action, target) values (${nid("aud")}, ${data.companyId}, ${session.userId}, 'device.registered', ${data.imei})`;
     return { ok: true, id };
   });
@@ -1311,16 +1345,25 @@ export const queueDeviceCommand = createServerFn({ method: "POST" })
     const scope = await companyScope(sql, session);
     const device = data.deviceId
       ? (
-          await sql<{ id: string; company_id: string | null; vehicle_id: string | null; imei: string }>`
-            select id, company_id, vehicle_id, imei from devices where id = ${data.deviceId} limit 1
+          await sql<{ id: string; company_id: string | null; vehicle_id: string | null; imei: string; connection_mode: string; capabilities: unknown }>`
+            select id, company_id, vehicle_id, imei, connection_mode, capabilities from devices where id = ${data.deviceId} limit 1
           `
         )[0]
       : (
-          await sql<{ id: string; company_id: string | null; vehicle_id: string | null; imei: string }>`
-            select id, company_id, vehicle_id, imei from devices where vehicle_id = ${data.vehicleId ?? ""} limit 1
+          await sql<{ id: string; company_id: string | null; vehicle_id: string | null; imei: string; connection_mode: string; capabilities: unknown }>`
+            select id, company_id, vehicle_id, imei, connection_mode, capabilities from devices where vehicle_id = ${data.vehicleId ?? ""} limit 1
           `
         )[0];
     if (!device || !inScope(scope, device.company_id)) throw new Error("Not found");
+    const requiredCapability: DeviceCapability =
+      data.kind === "locate" ? "remote_locate" : data.kind === "restart" ? "remote_restart" : "camera_snapshot";
+    const deviceCapabilities = Array.isArray(device.capabilities) ? device.capabilities : [];
+    if (!deviceCapabilities.includes(requiredCapability)) {
+      throw new Error("This device has not declared the required hardware capability");
+    }
+    if (device.connection_mode === "simulated" && session.realRole !== "super_admin") {
+      throw new Error("Simulator commands are restricted to platform administrators");
+    }
     const id = nid("cmd");
     await sql`
       insert into device_commands (id, company_id, device_id, vehicle_id, kind, status, requested_by)
@@ -1332,8 +1375,16 @@ export const queueDeviceCommand = createServerFn({ method: "POST" })
       insert into audit_logs (id, company_id, actor_id, action, target)
       values (${nid("aud")}, ${device.company_id}, ${session.userId}, ${`device.${data.kind}`}, ${device.imei})
     `;
-    await (await import("./simulate")).fulfillCommand(sql, id);
-    return { id };
+    if (device.connection_mode === "simulated") {
+      await (await import("./simulate")).fulfillCommand(sql, id);
+      return { id, status: "simulated" as const };
+    }
+    await sql`
+      update device_commands set status = 'awaiting_gateway',
+        result = ${"No live command gateway is connected; no command was sent."}
+      where id = ${id}
+    `;
+    return { id, status: "awaiting_gateway" as const };
   });
 
 export const listGeofences = createServerFn({ method: "GET" })

@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { assignDevice, deleteDevice, filePacket, getAppSession, listCalibrations, listCompanies, listDevices, listIngestJournal, listVehicles, queueDeviceCommand, saveCalibration, saveDevice } from "@/lib/fleet/api";
 import { DECODER_NAMES, decode, samplePacket, type DecoderName, type NormalizedFix } from "@/lib/fleet/decoders";
 import { commandLabel } from "@/lib/fleet/labels";
+import { DEVICE_CAPABILITIES, DEVICE_CAPABILITY_LABELS, type DeviceCapability, type DeviceConnectionMode } from "@/lib/fleet/types";
 import { PageHeader } from "@/components/layout/app-shell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -25,25 +26,33 @@ function DevicesPage() {
   const [open, setOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [imei, setImei] = useState("");
+  const [manufacturer, setManufacturer] = useState("");
+  const [model, setModel] = useState("");
   const [protocol, setProtocol] = useState("HTTP");
   const [decoder, setDecoder] = useState("generic_http");
   const [companyId, setCompanyId] = useState("");
   const [vehicleId, setVehicleId] = useState("");
+  const [capabilities, setCapabilities] = useState<DeviceCapability[]>([]);
+  const [connectionMode, setConnectionMode] = useState<DeviceConnectionMode>("live");
 
   const mut = useMutation({
     mutationFn: () =>
       saveDevice({
-        data: { id: editingId ?? undefined, imei, protocol, decoder, companyId: companyId || (companies.data?.[0]?.id ?? ""), vehicleId: vehicleId || null },
+        data: { id: editingId ?? undefined, imei, manufacturer, model, protocol, decoder, capabilities, connectionMode, companyId: companyId || (companies.data?.[0]?.id ?? ""), vehicleId: vehicleId || null },
       }),
     onSuccess: () => {
       toast.success(editingId ? "Device updated" : "Device registered");
       setOpen(false);
       setEditingId(null);
       setImei("");
+      setManufacturer("");
+      setModel("");
       setProtocol("HTTP");
       setDecoder("generic_http");
       setCompanyId("");
       setVehicleId("");
+      setCapabilities([]);
+      setConnectionMode("live");
       qc.invalidateQueries({ queryKey: ["devices"] });
     },
     onError: (e: Error) => toast.error(e.message),
@@ -69,10 +78,14 @@ function DevicesPage() {
               <Button size="sm" onClick={() => {
                 setEditingId(null);
                 setImei("");
+                setManufacturer("");
+                setModel("");
                 setProtocol("HTTP");
                 setDecoder("generic_http");
                 setCompanyId("");
                 setVehicleId("");
+                setCapabilities([]);
+                setConnectionMode("live");
               }}>Register device</Button>
             </DialogTrigger>
             <DialogContent title={editingId ? "Edit device" : "Register device"}>
@@ -84,17 +97,43 @@ function DevicesPage() {
                 }}
               >
                 <div className="space-y-1"><Label>IMEI</Label><Input required value={imei} onChange={(e) => setImei(e.target.value)} /></div>
-                <div className="space-y-1">
-                  <Label>Protocol</Label>
-                  <select className="h-10 w-full rounded-[var(--radius-sm)] border border-border bg-surface-2 px-3 text-sm" value={protocol} onChange={(e) => setProtocol(e.target.value)}>
-                    {["HTTP", "TCP", "MQTT", "UDP"].map((p) => <option key={p}>{p}</option>)}
-                  </select>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div className="space-y-1"><Label>Manufacturer</Label><Input value={manufacturer} onChange={(e) => setManufacturer(e.target.value)} placeholder="e.g. Teltonika, Concox" /></div>
+                  <div className="space-y-1"><Label>Device model</Label><Input value={model} onChange={(e) => setModel(e.target.value)} placeholder="Model / hardware revision" /></div>
                 </div>
                 <div className="space-y-1">
-                  <Label>Decoder</Label>
+                  <Label>Transport / protocol</Label>
+                  <Input value={protocol} onChange={(e) => setProtocol(e.target.value)} placeholder="TCP, UDP, MQTT, HTTP, HTTPS, vendor cloud…" />
+                  <p className="text-xs text-muted">Protocol names are flexible. A matching ingest adapter is still required to decode vendor-specific packets.</p>
+                </div>
+                <div className="space-y-1">
+                  <Label>Packet decoder</Label>
                   <select className="h-10 w-full rounded-[var(--radius-sm)] border border-border bg-surface-2 px-3 text-sm" value={decoder} onChange={(e) => setDecoder(e.target.value)}>
                     {DECODER_NAMES.map((p) => <option key={p}>{p}</option>)}
                   </select>
+                  <p className="text-xs text-muted">Generic JSON accepts normalized location payloads. Proprietary binary formats need their own decoder adapter before live ingestion.</p>
+                </div>
+                <div className="space-y-1">
+                  <Label>Connection mode</Label>
+                  <select disabled={session.data?.realRole !== "super_admin"} className="h-10 w-full rounded-[var(--radius-sm)] border border-border bg-surface-2 px-3 text-sm" value={connectionMode} onChange={(e) => setConnectionMode(e.target.value as DeviceConnectionMode)}>
+                    <option value="live">Live tracker</option><option value="simulated">Simulator / lab device</option>
+                  </select>
+                  <p className="text-xs text-muted">Live devices require a connected downlink gateway before remote commands can execute.</p>
+                </div>
+                <div className="space-y-2 rounded-[var(--radius-md)] border border-border p-3">
+                  <div><Label>Hardware capabilities</Label><p className="mt-1 text-xs text-muted">Declare only functions supported by this exact tracker model, wiring and vehicle installation.</p></div>
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    {DEVICE_CAPABILITIES.map((capability) => (
+                      <label key={capability} className="flex items-start gap-2 text-sm">
+                        <input type="checkbox" className="mt-1 accent-current" checked={capabilities.includes(capability)}
+                          onChange={(e) => setCapabilities((current) => e.target.checked ? [...current, capability] : current.filter((item) => item !== capability))} />
+                        <span>{DEVICE_CAPABILITY_LABELS[capability]}</span>
+                      </label>
+                    ))}
+                  </div>
+                  {capabilities.some((capability) => capability === "engine_immobilize" || capability === "engine_restore") && (
+                    <p className="text-xs text-amber-700">Engine immobilizer/restore support is recorded only. No live engine command is enabled until a verified downlink adapter, vehicle safety interlocks and command acknowledgements are in place.</p>
+                  )}
                 </div>
                 {companies.data && (
                   <div className="space-y-1">
@@ -120,10 +159,10 @@ function DevicesPage() {
       />
       <PacketBench />
       <div className="overflow-x-auto px-4 pb-10 md:px-6">
-        <table className="w-full min-w-[860px] text-left text-sm">
+        <table className="w-full min-w-[1280px] text-left text-sm">
           <thead className="text-xs uppercase tracking-[0.12em] text-subtle">
             <tr>
-              {["IMEI", "Decoder", "Vehicle", "Company", "Last seen", "GSM", "GPS", "Battery", "Actions & assignment"].map((h) => (
+              {["IMEI", "Hardware", "Decoder", "Capabilities", "Vehicle", "Company", "Last seen", "GSM", "GPS", "Battery", "Actions & assignment"].map((h) => (
                 <th key={h} className="whitespace-nowrap px-3 py-3 font-medium">{h}</th>
               ))}
             </tr>
@@ -132,7 +171,14 @@ function DevicesPage() {
             {(q.data ?? []).map((d) => (
               <tr key={d.id} className="border-t border-border align-middle hover:bg-surface-2/40">
                 <td className="px-2 py-2 font-mono text-xs">{d.imei}</td>
+                <td className="px-2 py-2"><div className="font-medium">{d.manufacturer || "Unknown manufacturer"}</div><div className="text-xs text-muted">{d.model || "Model not specified"}</div></td>
                 <td className="px-2 py-2"><Badge tone="muted">{d.decoder}</Badge></td>
+                <td className="px-2 py-2">
+                  <div className="flex max-w-[260px] flex-wrap gap-1">
+                    {d.capabilities.length ? d.capabilities.map((capability) => <Badge key={capability} tone="muted">{DEVICE_CAPABILITY_LABELS[capability]}</Badge>) : <span className="text-xs text-subtle">Not declared</span>}
+                  </div>
+                  {d.capabilities.length > 0 && d.capabilitySource === "manual" && <span className="mt-1 block text-[10px] text-subtle">Manually verified</span>}
+                </td>
                 <td className="px-2 py-2">{d.vehicleName ?? "—"}</td>
                 <td className="px-2 py-2 text-muted">{d.companyName ?? "—"}</td>
                 <td className="px-2 py-2 text-muted">{d.lastSeen ? new Date(d.lastSeen).toLocaleString() : "Never"}</td>
@@ -146,10 +192,14 @@ function DevicesPage() {
                       <Button size="sm" variant="secondary" onClick={() => {
                         setEditingId(d.id);
                         setImei(d.imei);
+                        setManufacturer(d.manufacturer ?? "");
+                        setModel(d.model ?? "");
                         setProtocol(d.protocol);
                         setDecoder(d.decoder);
                         setCompanyId(d.companyId ?? "");
                         setVehicleId(d.vehicleId ?? "");
+                        setCapabilities(d.capabilities);
+                        setConnectionMode(d.connectionMode);
                         setOpen(true);
                       }}>Edit</Button>
                     )}
@@ -159,6 +209,8 @@ function DevicesPage() {
                       role={session.data?.role}
                       lastKind={d.lastCommandKind}
                       lastStatus={d.lastCommandStatus}
+                      capabilities={d.capabilities}
+                      connectionMode={d.connectionMode}
                     />
                     {(session.data?.role === "super_admin" || session.data?.role === "field_admin" || session.data?.role === "company_admin") && (
                       <Button size="sm" variant="ghost" disabled={remove.isPending} onClick={() => {
@@ -198,36 +250,36 @@ function DevicesPage() {
   );
 }
 
-function CommandButtons({
-  deviceId,
-  role,
-  lastKind,
-  lastStatus,
-}: {
-  deviceId: string;
-  role: string | undefined;
-  lastKind: string | null;
-  lastStatus: string | null;
+function CommandButtons({ deviceId, role, lastKind, lastStatus, capabilities, connectionMode }: {
+  deviceId: string; role: string | undefined; lastKind: string | null; lastStatus: string | null;
+  capabilities: DeviceCapability[]; connectionMode: DeviceConnectionMode;
 }) {
   const qc = useQueryClient();
   const can = role === "super_admin" || role === "company_admin" || role === "field_admin";
   const mut = useMutation({
-    mutationFn: (kind: "locate" | "restart") => queueDeviceCommand({ data: { deviceId, kind } }),
-    onSuccess: () => {
-      toast.success("Command acknowledged");
+    mutationFn: (kind: "locate" | "restart" | "snapshot") => queueDeviceCommand({ data: { deviceId, kind } }),
+    onSuccess: (result) => {
+      toast.success(result.status === "simulated" ? "Simulator command completed" : "Command recorded only — live gateway is not connected");
       qc.invalidateQueries({ queryKey: ["devices"] });
       qc.invalidateQueries({ queryKey: ["live-fleet"] });
     },
     onError: (e: Error) => toast.error(e.message),
   });
+  const actions = [
+    { kind: "locate" as const, label: "Locate", capability: "remote_locate" as const },
+    { kind: "restart" as const, label: "Restart", capability: "remote_restart" as const },
+    { kind: "snapshot" as const, label: "Snapshot", capability: "camera_snapshot" as const },
+  ].filter((action) => capabilities.includes(action.capability));
   if (!can) return lastKind ? <span className="text-xs text-subtle">{commandLabel(lastKind)} · {lastStatus}</span> : null;
   return (
     <div className="flex flex-wrap items-center gap-1">
-      <Button size="sm" variant="ghost" disabled={mut.isPending} onClick={() => mut.mutate("locate")}>Locate</Button>
-      <Button size="sm" variant="ghost" disabled={mut.isPending} onClick={() => mut.mutate("restart")}>Restart</Button>
-      {lastKind && (
-        <span className="text-xs text-subtle">{commandLabel(lastKind)} · {lastStatus}</span>
-      )}
+      {actions.map((action) => <Button key={action.kind} size="sm" variant="ghost"
+        disabled={mut.isPending || connectionMode === "live"}
+        title={connectionMode === "live" ? "Live command gateway is not connected" : undefined}
+        onClick={() => mut.mutate(action.kind)}>{action.label}</Button>)}
+      {connectionMode === "live" && actions.length > 0 && <span className="w-full text-[11px] text-subtle">Live gateway pending; no commands are transmitted.</span>}
+      {(capabilities.includes("engine_immobilize") || capabilities.includes("engine_restore")) && <span className="w-full text-[11px] text-amber-700">Engine control hardware declared · live gateway and safety checks pending</span>}
+      {lastKind && <span className="text-xs text-subtle">{commandLabel(lastKind)} · {lastStatus}</span>}
     </div>
   );
 }

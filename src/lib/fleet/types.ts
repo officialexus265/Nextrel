@@ -11,6 +11,29 @@ export type Role = (typeof ROLES)[number];
 
 export type MovementState = "moving" | "idle" | "stopped" | "offline";
 
+export const DEVICE_CAPABILITIES = [
+  "gps_tracking", "ignition_status", "fuel_level", "fuel_probe", "battery_status",
+  "external_power", "gsm_signal", "gps_signal", "temperature_sensor", "door_sensor",
+  "sos_button", "canbus_data", "odometer", "engine_hours", "driver_id", "rfid_reader",
+  "tire_pressure", "tow_detection", "tamper_detection", "engine_immobilize", "engine_restore",
+  "remote_restart", "remote_locate", "camera_snapshot", "buzzer", "central_lock", "door_lock", "door_unlock",
+] as const;
+export type DeviceCapability = (typeof DEVICE_CAPABILITIES)[number];
+export type DeviceConnectionMode = "live" | "simulated";
+export type DeviceCapabilitySource = "unverified" | "manual" | "protocol" | "reported";
+export const DEVICE_CAPABILITY_LABELS: Record<DeviceCapability, string> = {
+  gps_tracking: "GPS tracking", ignition_status: "Ignition status", fuel_level: "Fuel level",
+  fuel_probe: "External fuel probe", battery_status: "Internal battery", external_power: "External power",
+  gsm_signal: "GSM signal", gps_signal: "GPS signal", temperature_sensor: "Temperature sensor",
+  door_sensor: "Door sensor", sos_button: "SOS / panic button", canbus_data: "CAN bus data",
+  odometer: "Odometer", engine_hours: "Engine hours", driver_id: "Driver identification",
+  rfid_reader: "RFID reader", tire_pressure: "Tyre pressure (TPMS)", tow_detection: "Tow detection",
+  tamper_detection: "Tamper detection", engine_immobilize: "Engine immobilizer / cut",
+  engine_restore: "Engine restore / enable", remote_restart: "Remote tracker restart",
+  remote_locate: "Remote locate", camera_snapshot: "Camera snapshot", buzzer: "Buzzer / alarm",
+  central_lock: "Central locking", door_lock: "Remote door lock", door_unlock: "Remote door unlock",
+};
+
 export type AlertType =
   | "offline"
   | "speeding"
@@ -165,8 +188,14 @@ export type DeviceRow = {
   vehicleId: string | null;
   vehicleName: string | null;
   imei: string;
+  manufacturer: string | null;
+  model: string | null;
   protocol: string;
   decoder: string;
+  capabilities: DeviceCapability[];
+  capabilitySource: DeviceCapabilitySource;
+  capabilitiesVerifiedAt: string | null;
+  connectionMode: DeviceConnectionMode;
   lastSeen: string | null;
   gsmSignal: number | null;
   gpsSignal: number | null;

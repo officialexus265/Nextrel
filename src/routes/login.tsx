@@ -1,15 +1,20 @@
-import { createFileRoute, Navigate } from "@tanstack/react-router";
-import { useState } from "react";
+import { createFileRoute, Link, Navigate } from "@tanstack/react-router";
+import { useEffect, useRef, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Eye, EyeOff } from "lucide-react";
 import { GROK_PROVIDERS, authClient, authEnabled, signIn } from "@/lib/auth/client";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
+import { getAppSession } from "@/lib/fleet/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { KestrelMark } from "@/components/layout/app-shell";
 import { Separator } from "@/components/ui/separator";
 
-export const Route = createFileRoute("/login")({ component: Login });
+export const Route = createFileRoute("/login")({
+  validateSearch: (search: Record<string, unknown>) => ({ portal: search.portal === "standard" ? "standard" as const : undefined }),
+  component: Login,
+});
 
 /** Simple client-side cooldown after repeated failures (not a substitute for server rate limits). */
 const MAX_ATTEMPTS = 5;
@@ -17,6 +22,11 @@ const LOCK_MS = 30_000;
 
 function Login() {
   const { user, isPending } = useCurrentUserState();
+  const { portal } = Route.useSearch();
+  const sessionQuery = useQuery({ queryKey: ["app-session-login"], queryFn: () => getAppSession(), enabled: Boolean(user), retry: false });
+  const signOutStarted = useRef(false);
+  const [deniedForPlatform, setDeniedForPlatform] = useState(false);
+  const [denied, setDenied] = useState(false);
   const [mode, setMode] = useState<"in" | "up">("in");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -27,10 +37,33 @@ function Login() {
   const [fails, setFails] = useState(0);
   const [lockedUntil, setLockedUntil] = useState(0);
 
-  if (isPending) {
-    return <div className="grid min-h-dvh place-items-center bg-bg text-muted">Loading session…</div>;
+  useEffect(() => {
+    if (!user || sessionQuery.isPending || denied || signOutStarted.current) return;
+    if (sessionQuery.isError || (portal === "standard" && sessionQuery.data?.realRole === "super_admin")) {
+      signOutStarted.current = true;
+      setDeniedForPlatform(sessionQuery.data?.realRole === "super_admin");
+      void authClient.signOut().catch(() => undefined).finally(() => setDenied(true));
+    }
+  }, [user, sessionQuery.isPending, sessionQuery.isError, sessionQuery.data, portal, denied]);
+
+  if (isPending) return <div className="grid min-h-dvh place-items-center bg-bg text-muted">Loading session…</div>;
+  if (user && sessionQuery.isPending) return <div className="grid min-h-dvh place-items-center bg-bg text-muted">Verifying portal access…</div>;
+  if (user && sessionQuery.data?.realRole === "super_admin" && portal !== "standard") return <Navigate to="/platform" />;
+  if (user && sessionQuery.data && sessionQuery.data.realRole !== "super_admin") return <Navigate to="/ops" />;
+  if (user && (sessionQuery.isError || (portal === "standard" && sessionQuery.data?.realRole === "super_admin"))) {
+    return <div className="grid min-h-dvh place-items-center bg-bg text-muted">Checking portal access…</div>;
   }
-  if (user) return <Navigate to="/ops" />;
+  if (denied) {
+    return <main className="grid min-h-dvh place-items-center bg-bg px-4">
+      <div className="w-full max-w-sm rounded-[var(--radius-xl)] border border-border bg-surface p-6 text-center">
+        <h1 className="text-lg font-semibold">Wrong sign-in portal</h1>
+        <p className="mt-2 text-sm text-muted">{deniedForPlatform
+          ? "Platform administrator accounts cannot use the standard login. Sign in through the platform portal instead."
+          : "We could not verify this account's access. Please try again."}</p>
+        {deniedForPlatform && <Link to="/platform" className="mt-4 inline-flex text-sm font-medium underline">Open platform sign-in</Link>}
+      </div>
+    </main>;
+  }
 
   const locked = Date.now() < lockedUntil;
 
@@ -44,10 +77,10 @@ function Login() {
     setError(null);
     try {
       if (mode === "up") {
-        const res = await authClient.signUp.email({ email, password, name: name || email, callbackURL: "/ops" });
+        const res = await authClient.signUp.email({ email, password, name: name || email, callbackURL: "/login?portal=standard" });
         if (res.error) throw new Error(res.error.message);
       } else {
-        const res = await authClient.signIn.email({ email, password, callbackURL: "/ops" });
+        const res = await authClient.signIn.email({ email, password, callbackURL: "/login?portal=standard" });
         if (res.error) throw new Error(res.error.message);
       }
       setFails(0);
@@ -86,7 +119,7 @@ function Login() {
                 type="button"
                 variant="secondary"
                 className="w-full"
-                onClick={() => signIn(p.providerId, { callbackURL: "/ops" })}
+                onClick={() => signIn(p.providerId, { callbackURL: "/login?portal=standard" })}
               >
                 Continue with {p.label}
               </Button>

@@ -1,5 +1,5 @@
 import { createFileRoute, Navigate } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Eye, EyeOff } from "lucide-react";
 import { authClient, authEnabled } from "@/lib/auth/client";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
@@ -30,6 +30,7 @@ function PlatformLogin() {
   const [showPassword, setShowPassword] = useState(false);
   const [fails, setFails] = useState(0);
   const [lockedUntil, setLockedUntil] = useState(0);
+  const signOutStarted = useRef(false);
 
   const sessionQuery = useQuery({
     queryKey: ["app-session-platform"],
@@ -42,24 +43,18 @@ function PlatformLogin() {
     return <div className="grid min-h-dvh place-items-center bg-bg text-muted">Loading…</div>;
   }
 
+  useEffect(() => {
+    if (!user || sessionQuery.isPending || denied || signOutStarted.current) return;
+    if (sessionQuery.isError || (sessionQuery.data && sessionQuery.data.realRole !== "super_admin")) {
+      signOutStarted.current = true;
+      void authClient.signOut().catch(() => undefined).finally(() => setDenied(true));
+    }
+  }, [user, sessionQuery.isPending, sessionQuery.isError, sessionQuery.data, denied]);
+
   if (user && !denied) {
-    if (sessionQuery.isPending) {
-      return <div className="grid min-h-dvh place-items-center bg-bg text-muted">Verifying access…</div>;
-    }
-    if (sessionQuery.data?.realRole === "super_admin") {
-      return <Navigate to="/ops" />;
-    }
-    if (sessionQuery.data || sessionQuery.isError) {
-      authClient.signOut().finally(() => setDenied(true));
-      return (
-        <div className="grid min-h-dvh place-items-center bg-bg px-4">
-          <div className="max-w-sm text-center">
-            <p className="text-sm text-down">Access denied</p>
-            <p className="mt-2 text-sm text-muted">This entry point is reserved for the platform owner.</p>
-          </div>
-        </div>
-      );
-    }
+    if (sessionQuery.isPending) return <div className="grid min-h-dvh place-items-center bg-bg text-muted">Verifying access…</div>;
+    if (sessionQuery.data?.realRole === "super_admin") return <Navigate to="/ops" />;
+    if (sessionQuery.data || sessionQuery.isError) return <div className="grid min-h-dvh place-items-center bg-bg text-muted">Verifying platform access…</div>;
   }
 
   if (denied) {
