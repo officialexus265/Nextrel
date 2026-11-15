@@ -1,0 +1,27 @@
+name: Restore api.ts
+on:
+  workflow_dispatch:
+jobs:
+  restore:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Restore api.ts from known-good commit
+        run: |
+          set -e
+          git show c8c6ef886e476418d72aab6e2095b335f7a64726:src/lib/fleet/api.ts > src/lib/fleet/api.ts
+          test -s src/lib/fleet/api.ts
+          grep -q 'export const setViewAs' src/lib/fleet/api.ts
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add src/lib/fleet/api.ts
+          if git diff --cached --quiet; then
+            echo "Already restored"
+            exit 0
+          fi
+          git commit -m "ci: restore src/lib/fleet/api.ts from known-good commit"
+          git push
