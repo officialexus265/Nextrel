@@ -11,6 +11,50 @@ export type Role = (typeof ROLES)[number];
 
 export type MovementState = "moving" | "idle" | "stopped" | "offline";
 
+export const DEVICE_CAPABILITIES = [
+  "gps_tracking",
+  "ignition_status",
+  "fuel_level",
+  "battery_status",
+  "gsm_signal",
+  "gps_signal",
+  "temperature_sensor",
+  "door_sensor",
+  "sos_button",
+  "canbus_data",
+  "engine_immobilize",
+  "engine_restore",
+  "remote_restart",
+  "remote_locate",
+  "camera_snapshot",
+  "buzzer",
+  "central_lock",
+] as const;
+
+export type DeviceCapability = (typeof DEVICE_CAPABILITIES)[number];
+
+export const DEVICE_CAPABILITY_LABELS: Record<DeviceCapability, string> = {
+  gps_tracking: "GPS tracking",
+  ignition_status: "Ignition detection",
+  fuel_level: "Fuel monitoring",
+  battery_status: "Battery monitoring",
+  gsm_signal: "GSM signal",
+  gps_signal: "GPS signal",
+  temperature_sensor: "Temperature sensor",
+  door_sensor: "Door sensor",
+  sos_button: "SOS button",
+  canbus_data: "CAN bus data",
+  engine_immobilize: "Engine immobilizer (cut)",
+  engine_restore: "Engine restore",
+  remote_restart: "Remote restart",
+  remote_locate: "Remote locate",
+  camera_snapshot: "Camera snapshot",
+  buzzer: "Buzzer / alarm",
+  central_lock: "Central locking",
+};
+
+export type DeviceConnectionMode = "live" | "simulated";
+
 export type AlertType =
   | "offline"
   | "speeding"
@@ -167,6 +211,10 @@ export type DeviceRow = {
   imei: string;
   protocol: string;
   decoder: string;
+  capabilities: DeviceCapability[];
+  capabilitySource: "unverified" | "manual" | "protocol" | "reported";
+  capabilitiesVerifiedAt: string | null;
+  connectionMode: DeviceConnectionMode;
   lastSeen: string | null;
   gsmSignal: number | null;
   gpsSignal: number | null;
