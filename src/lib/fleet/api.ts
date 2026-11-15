@@ -89,20 +89,38 @@ export const setViewAs = createServerFn({ method: "POST" })
   )
   .handler(async ({ context, data }) => {
     const { sql, session } = await ctx(context.userId);
-    if (session.realRole !== "super_admin") throw new Error("Forbidden");
+    const real = session.realRole;
+    if (real !== "super_admin" && real !== "field_admin") throw new Error("Forbidden");
     if (data.role === "super_admin") {
+      if (real !== "super_admin") throw new Error("Forbidden");
       await sql`delete from view_overrides where user_id = ${session.userId}`;
-    } else {
-      await sql`
-        insert into view_overrides (user_id, role, company_id, started_at)
-        values (${session.userId}, ${data.role}, ${data.companyId}, ${new Date().toISOString()})
-        on conflict (user_id) do update set role = excluded.role, company_id = excluded.company_id, started_at = excluded.started_at
-      `;
+      await sql`insert into audit_logs (id, company_id, actor_id, action, target) values (${nid("aud")}, null, ${session.userId}, 'impersonate.exit', 'super_admin')`;
+      return (await import("./session")).bootstrapSession(sql, session.userId);
     }
-    await sql`
-      insert into audit_logs (id, company_id, actor_id, action, target)
-      values (${nid("aud")}, ${data.companyId}, ${session.userId}, 'impersonate', ${data.role})
-    `;
+    if (data.role === "field_admin" && data.companyId == null) {
+      if (real !== "field_admin") throw new Error("Forbidden");
+      await sql`delete from view_overrides where user_id = ${session.userId}`;
+      await sql`insert into audit_logs (id, company_id, actor_id, action, target) values (${nid("aud")}, null, ${session.userId}, 'impersonate.exit', 'field_admin')`;
+      return (await import("./session")).bootstrapSession(sql, session.userId);
+    }
+    const superTargets = new Set(["company_admin", "tracker", "accounts", "field_admin"]);
+    const fieldTargets = new Set(["tracker"]);
+    if (real === "super_admin") {
+      if (!superTargets.has(data.role)) throw new Error("Forbidden");
+    } else {
+      if (!fieldTargets.has(data.role)) throw new Error("Forbidden");
+    }
+    if (!data.companyId || !data.companyId.trim()) throw new Error("Company is required");
+    const companyId = data.companyId.trim();
+    const company = (await sql<{ id: string; status: string }>`select id, status from companies where id = ${companyId} limit 1`)[0];
+    if (!company) throw new Error("Company not found");
+    if (company.status === "suspended") throw new Error("Company is suspended");
+    if (real === "field_admin") {
+      const assigned = (await sql<{ company_id: string }>`select company_id from field_assignments where user_id = ${session.userId} and company_id = ${companyId} limit 1`)[0];
+      if (!assigned) throw new Error("Forbidden");
+    }
+    await sql`insert into view_overrides (user_id, role, company_id, started_at) values (${session.userId}, ${data.role}, ${companyId}, ${new Date().toISOString()}) on conflict (user_id) do update set role = excluded.role, company_id = excluded.company_id, started_at = excluded.started_at`;
+    await sql`insert into audit_logs (id, company_id, actor_id, action, target) values (${nid("aud")}, ${companyId}, ${session.userId}, 'impersonate', ${data.role})`;
     return (await import("./session")).bootstrapSession(sql, session.userId);
   });
 
