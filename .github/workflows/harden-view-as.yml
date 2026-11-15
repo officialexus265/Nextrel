@@ -1,0 +1,32 @@
+name: Harden view-as
+on:
+  workflow_dispatch:
+jobs:
+  harden:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch setViewAs
+        run: |
+          python3 << 'PY'
+          from pathlib import Path
+          p = Path("src/lib/fleet/api.ts")
+          text = p.read_text()
+          if "fieldTargets" in text:
+              print("already hardened")
+              raise SystemExit(0)
+          old = '''export const setViewAs = createServerFn({ method: "POST" })\n  .middleware([authMiddleware])\n  .validator(\n    z.object({\n      role: z.enum(["super_admin", "field_admin", "company_admin", "tracker", "accounts"]),\n      companyId: z.string().nullable(),\n    }),\n  )\n  .handler(async ({ context, data }) => {\n    const { sql, session } = await ctx(context.userId);\n    if (session.realRole !== "super_admin") throw new Error("Forbidden");\n    if (data.role === "super_admin") {\n      await sql`delete from view_overrides where user_id = ${session.userId}`;\n    } else {\n      await sql`\n        insert into view_overrides (user_id, role, company_id, started_at)\n        values (${session.userId}, ${data.role}, ${data.companyId}, ${new Date().toISOString()})\n        on conflict (user_id) do update set role = excluded.role, company_id = excluded.company_id, started_at = excluded.started_at\n      `;\n    }\n    await sql`\n      insert into audit_logs (id, company_id, actor_id, action, target)\n      values (${nid("aud")}, ${data.companyId}, ${session.userId}, 'impersonate', ${data.role})\n    `;\n    return (await import("./session")).bootstrapSession(sql, session.userId);\n  });'''
+          new = '''export const setViewAs = createServerFn({ method: "POST" })\n  .middleware([authMiddleware])\n  .validator(\n    z.object({\n      role: z.enum(["super_admin", "field_admin", "company_admin", "tracker", "accounts"]),\n      companyId: z.string().nullable(),\n    }),\n  )\n  .handler(async ({ context, data }) => {\n    const { sql, session } = await ctx(context.userId);\n    const real = session.realRole;\n    if (real !== "super_admin" && real !== "field_admin") throw new Error("Forbidden");\n    if (data.role === "super_admin") {\n      if (real !== "super_admin") throw new Error("Forbidden");\n      await sql`delete from view_overrides where user_id = ${session.userId}`;\n      await sql`insert into audit_logs (id, company_id, actor_id, action, target) values (${nid("aud")}, null, ${session.userId}, 'impersonate.exit', 'super_admin')`;\n      return (await import("./session")).bootstrapSession(sql, session.userId);\n    }\n    if (data.role === "field_admin" && data.companyId == null) {\n      if (real !== "field_admin") throw new Error("Forbidden");\n      await sql`delete from view_overrides where user_id = ${session.userId}`;\n      await sql`insert into audit_logs (id, company_id, actor_id, action, target) values (${nid("aud")}, null, ${session.userId}, 'impersonate.exit', 'field_admin')`;\n      return (await import("./session")).bootstrapSession(sql, session.userId);\n    }\n    const superTargets = new Set(["company_admin", "tracker", "accounts", "field_admin"]);\n    const fieldTargets = new Set(["tracker"]);\n    if (real === "super_admin") {\n      if (!superTargets.has(data.role)) throw new Error("Forbidden");\n    } else {\n      if (!fieldTargets.has(data.role)) throw new Error("Forbidden");\n    }\n    if (!data.companyId || !data.companyId.trim()) throw new Error("Company is required");\n    const companyId = data.companyId.trim();\n    const company = (await sql<{ id: string; status: string }>`select id, status from companies where id = ${companyId} limit 1`)[0];\n    if (!company) throw new Error("Company not found");\n    if (company.status === "suspended") throw new Error("Company is suspended");\n    if (real === "field_admin") {\n      const assigned = (await sql<{ company_id: string }>`select company_id from field_assignments where user_id = ${session.userId} and company_id = ${companyId} limit 1`)[0];\n      if (!assigned) throw new Error("Forbidden");\n    }\n    await sql`insert into view_overrides (user_id, role, company_id, started_at) values (${session.userId}, ${data.role}, ${companyId}, ${new Date().toISOString()}) on conflict (user_id) do update set role = excluded.role, company_id = excluded.company_id, started_at = excluded.started_at`;\n    await sql`insert into audit_logs (id, company_id, actor_id, action, target) values (${nid("aud")}, ${companyId}, ${session.userId}, 'impersonate', ${data.role})`;\n    return (await import("./session")).bootstrapSession(sql, session.userId);\n  });'''
+          if old not in text:
+              raise SystemExit("setViewAs block not found")
+          p.write_text(text.replace(old, new, 1))
+          print("hardened setViewAs")
+          PY
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add src/lib/fleet/api.ts
+          git diff --cached --quiet && exit 0
+          git commit -m "Harden setViewAs: field staff tracker-only, company checks"
+          git push
