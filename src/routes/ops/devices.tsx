@@ -246,35 +246,55 @@ function CommandButtons({
   role,
   lastKind,
   lastStatus,
+  capabilities,
+  connectionMode,
 }: {
   deviceId: string;
   role: string | undefined;
   lastKind: string | null;
   lastStatus: string | null;
+  capabilities: DeviceCapability[];
+  connectionMode: DeviceConnectionMode;
 }) {
   const qc = useQueryClient();
   const can = role === "super_admin" || role === "company_admin" || role === "field_admin";
   const mut = useMutation({
-    mutationFn: (kind: "locate" | "restart") => queueDeviceCommand({ data: { deviceId, kind } }),
-    onSuccess: () => {
-      toast.success("Command acknowledged");
+    mutationFn: (kind: "locate" | "restart" | "snapshot") => queueDeviceCommand({ data: { deviceId, kind } }),
+    onSuccess: (result) => {
+      toast.success(result.status === "simulated"
+        ? "Simulator command completed"
+        : "Command recorded only — live gateway is not connected");
       qc.invalidateQueries({ queryKey: ["devices"] });
       qc.invalidateQueries({ queryKey: ["live-fleet"] });
     },
     onError: (e: Error) => toast.error(e.message),
   });
+  const actions = [
+    { kind: "locate" as const, label: "Locate", capability: "remote_locate" as const },
+    { kind: "restart" as const, label: "Restart", capability: "remote_restart" as const },
+    { kind: "snapshot" as const, label: "Snapshot", capability: "camera_snapshot" as const },
+  ].filter((action) => capabilities.includes(action.capability));
   if (!can) return lastKind ? <span className="text-xs text-subtle">{commandLabel(lastKind)} · {lastStatus}</span> : null;
   return (
     <div className="flex flex-wrap items-center gap-1">
-      <Button size="sm" variant="ghost" disabled={mut.isPending} onClick={() => mut.mutate("locate")}>Locate</Button>
-      <Button size="sm" variant="ghost" disabled={mut.isPending} onClick={() => mut.mutate("restart")}>Restart</Button>
-      {lastKind && (
-        <span className="text-xs text-subtle">{commandLabel(lastKind)} · {lastStatus}</span>
+      {actions.map((action) => (
+        <Button key={action.kind} size="sm" variant="ghost"
+          disabled={mut.isPending || connectionMode === "live"}
+          title={connectionMode === "live" ? "Live command gateway is not connected" : undefined}
+          onClick={() => mut.mutate(action.kind)}>
+          {action.label}
+        </Button>
+      ))}
+      {connectionMode === "live" && actions.length > 0 && (
+        <span className="w-full text-[11px] text-subtle">Live command gateway pending; no commands are sent.</span>
       )}
+      {(capabilities.includes("engine_immobilize") || capabilities.includes("engine_restore")) && (
+        <span className="w-full text-[11px] text-amber-700">Engine controls: hardware declared · gateway and safety checks pending</span>
+      )}
+      {lastKind && <span className="text-xs text-subtle">{commandLabel(lastKind)} · {lastStatus}</span>}
     </div>
   );
 }
-
 function CalibrateButton({ deviceId, count }: { deviceId: string; count: number }) {
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
