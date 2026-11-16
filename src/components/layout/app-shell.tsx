@@ -42,7 +42,7 @@ import { toast } from "sonner";
 
 type Item = { to: string; label: string; icon: typeof MapIcon };
 
-function navFor(role: Role): Item[] {
+function navFor(role: Role, isCompanyOwner = false): Item[] {
   if (role === "accounts") {
     return [
       { to: "/ops/billing", label: "Invoices", icon: ClipboardList },
@@ -61,6 +61,8 @@ function navFor(role: Role): Item[] {
       { to: "/ops", label: "Live map", icon: MapIcon },
       { to: "/ops/brief", label: "Brief", icon: LayoutDashboard },
       { to: "/ops/admin", label: "Companies", icon: Building2 },
+      { to: "/ops/registrations", label: "Registrations", icon: Users },
+      { to: "/ops/ownership", label: "Ownership", icon: Shield },
       { to: "/ops/control", label: "Control", icon: Settings2 },
       { to: "/ops/devices", label: "Inventory", icon: Radio },
       { to: "/ops/alerts", label: "Alerts", icon: Bell },
@@ -90,6 +92,7 @@ function navFor(role: Role): Item[] {
   } else {
     ops.push({ to: "/ops/media", label: "Media", icon: Camera });
   }
+  if (isCompanyOwner) ops.push({ to: "/ops/ownership", label: "Ownership", icon: Shield });
   return ops;
 }
 
@@ -120,7 +123,7 @@ export function AppShell({
     enabled: canSwitch,
   });
   const [switching, setSwitching] = useState(false);
-  const items = navFor(session.role);
+  const items = navFor(session.role, session.isCompanyOwner);
   const mobile = items.slice(0, 3);
   const overflow = items.slice(3);
   const moreActive = overflow.some(
