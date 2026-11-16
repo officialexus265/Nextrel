@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
-import { Crosshair, Fuel, Gauge, MapPin, Navigation, Radio, Search, X } from "lucide-react";
+import { Activity, Bell, CircleStop, Crosshair, Fuel, Gauge, MapPin, Navigation, PauseCircle, Radio, RefreshCw, Search, Truck, WifiOff, X } from "lucide-react";
 import { getLiveFleet } from "@/lib/fleet/api";
 import { LiveMap } from "@/components/map/live-map";
 import { StatusChip } from "@/components/fleet/status";
@@ -40,17 +40,32 @@ function LiveOps() {
   }, [vehicles, filter, query]);
 
   return (
-    <div className="flex h-[calc(100dvh-7.5rem)] flex-col md:h-[calc(100dvh-3.5rem)]">
-      <div className="grid grid-cols-3 gap-px border-b border-border bg-border sm:grid-cols-6">
-        <Kpi label="Vehicles" value={kpis?.vehicles ?? "—"} />
-        <Kpi label="Moving" value={kpis?.moving ?? "—"} tone="live" />
-        <Kpi label="Idling" value={kpis?.idle ?? "—"} tone="idle" />
-        <Kpi label="Stopped" value={vehicles.filter((v) => v.movement === "stopped").length || (q.data ? 0 : "—")} tone="down" />
-        <Kpi label="Offline" value={kpis?.offline ?? "—"} tone="down" />
-        <Kpi label="Open alerts" value={kpis?.openAlerts ?? "—"} tone={kpis?.criticalAlerts ? "down" : "muted"} />
+    <div className="min-h-full space-y-4 p-3 md:space-y-5 md:p-5">
+      <section className="flex flex-wrap items-center justify-between gap-3">
+        <div className="min-w-0">
+          <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-live">Operations / Live monitoring</div>
+          <h1 className="mt-1 text-2xl font-semibold tracking-tight md:text-[1.7rem]">Live fleet</h1>
+          <p className="mt-1 text-sm text-muted">{vehicles.length} vehicle{vehicles.length === 1 ? "" : "s"} in your monitored fleet</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="hidden items-center gap-1.5 text-xs text-subtle sm:inline-flex"><span className="size-1.5 animate-pulse rounded-full bg-live" /> Refreshes every 4 seconds</span>
+          <button type="button" onClick={() => q.refetch()} disabled={q.isFetching} className="inline-flex h-9 items-center gap-2 rounded-[var(--radius-sm)] border border-border bg-surface px-3 text-xs font-medium text-fg transition-colors hover:bg-surface-2 disabled:opacity-50">
+            <RefreshCw className={cn("size-3.5", q.isFetching && "animate-spin")} /> Refresh
+          </button>
+        </div>
+      </section>
+      {q.isError && <div role="alert" className="rounded-[var(--radius-md)] border border-down/30 bg-down/10 px-4 py-3 text-sm text-down">Live fleet data could not be refreshed. Showing the last available data, if any.</div>}
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-6">
+        <Kpi icon={Truck} label="Vehicles" value={kpis?.vehicles ?? "—"} detail="Registered units" />
+        <Kpi icon={Activity} label="Moving" value={kpis?.moving ?? "—"} tone="live" detail="On the road" />
+        <Kpi icon={PauseCircle} label="Idling" value={kpis?.idle ?? "—"} tone="idle" detail="Engine on, stationary" />
+        <Kpi icon={CircleStop} label="Stopped" value={vehicles.filter((v) => v.movement === "stopped").length || (q.data ? 0 : "—")} detail="Parked or stationary" />
+        <Kpi icon={WifiOff} label="Offline" value={kpis?.offline ?? "—"} tone="down" detail="No recent signal" />
+        <Kpi icon={Bell} label="Open alerts" value={kpis?.openAlerts ?? "—"} tone={kpis?.criticalAlerts ? "down" : "muted"} detail={kpis?.criticalAlerts ? `${kpis.criticalAlerts} critical` : "Needs attention"} />
       </div>
-      <div className="flex items-center gap-3 overflow-x-auto border-b border-border bg-surface px-3 py-2 text-xs text-muted">
-        <span className="shrink-0 tabular">24h {kpis ? formatKm(kpis.distance24h) : "—"}</span>
+      <section className="flex flex-wrap items-center gap-3 rounded-[var(--radius-md)] border border-border bg-surface px-3 py-2.5 text-xs text-muted">
+        <span className="shrink-0 font-semibold uppercase tracking-[0.12em] text-subtle">Live activity</span>
+        <span className="shrink-0 rounded-full bg-surface-2 px-2.5 py-1 tabular">24h distance · {kpis ? formatKm(kpis.distance24h) : "—"}</span>
         <span className={cn("shrink-0", kpis?.fuelDrops24h ? "text-down" : "")}>
           {kpis?.fuelDrops24h ?? "—"} fuel drop{kpis?.fuelDrops24h === 1 ? "" : "s"}
         </span>
@@ -75,15 +90,16 @@ function LiveOps() {
             key={a.id}
             type="button"
             onClick={() => setSelectedId(a.vehicleId)}
-            className="shrink-0 rounded-full border border-border bg-surface-2 px-2.5 py-1 text-fg"
+            className="shrink-0 rounded-full border border-border bg-surface-2 px-2.5 py-1 text-fg transition-colors hover:border-border-strong hover:bg-surface-3"
           >
             <PulseDot severity={a.severity} />
             {a.title}
           </button>
         ))}
-      </div>
-      <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
-        <section className="relative min-h-0 min-w-0 flex-1">
+        {!pulse.length && !signals.length && <span className="text-subtle">No new activity to report.</span>}
+      </section>
+      <div className="grid min-h-0 gap-3 lg:grid-cols-[minmax(0,1fr)_22rem]">
+        <section className="relative h-[56vh] min-h-[420px] min-w-0 overflow-hidden rounded-[var(--radius-lg)] border border-border bg-surface shadow-[var(--shadow-panel)] lg:h-[calc(100dvh-20rem)] lg:min-h-[520px]">
           {q.data ? (
             <LiveMap
               vehicles={vehicles}
@@ -131,7 +147,7 @@ function LiveOps() {
                   <div className="text-sm font-semibold">{selected.name}</div>
                   <div className="font-mono text-xs text-muted">{selected.plate}</div>
                 </div>
-                <button type="button" className="rounded-[var(--radius-xs)] p-1 text-muted hover:bg-surface-2" onClick={() => setSelectedId(null)}>
+                <button type="button" aria-label="Close vehicle details" className="rounded-[var(--radius-xs)] p-1 text-muted hover:bg-surface-2" onClick={() => setSelectedId(null)}>
                   <X className="size-4" />
                 </button>
               </div>
@@ -166,12 +182,12 @@ function LiveOps() {
             </aside>
           )}
         </section>
-        <aside className="flex h-[42%] min-h-0 w-full shrink-0 flex-col border-t border-border bg-surface lg:hidden">
-          <FleetFilters query={query} setQuery={setQuery} filter={filter} setFilter={setFilter} />
+        <aside className="flex max-h-[440px] min-h-[320px] w-full shrink-0 flex-col overflow-hidden rounded-[var(--radius-lg)] border border-border bg-surface lg:hidden">
+          <FleetFilters query={query} setQuery={setQuery} filter={filter} setFilter={setFilter} count={filtered.length} />
           <FleetList vehicles={filtered} selectedId={selectedId} onSelect={setSelectedId} />
         </aside>
-        <aside className="hidden w-80 shrink-0 flex-col border-l border-border bg-surface lg:flex">
-          <FleetFilters query={query} setQuery={setQuery} filter={filter} setFilter={setFilter} />
+        <aside className="hidden min-h-[520px] min-w-0 flex-col overflow-hidden rounded-[var(--radius-lg)] border border-border bg-surface lg:flex">
+          <FleetFilters query={query} setQuery={setQuery} filter={filter} setFilter={setFilter} count={filtered.length} />
           <FleetList vehicles={filtered} selectedId={selectedId} onSelect={setSelectedId} />
         </aside>
       </div>
@@ -204,14 +220,23 @@ function FleetFilters({
   setQuery,
   filter,
   setFilter,
+  count,
 }: {
   query: string;
   setQuery: (v: string) => void;
   filter: "all" | LiveVehicle["movement"];
   setFilter: (v: "all" | LiveVehicle["movement"]) => void;
+  count: number;
 }) {
   return (
-    <div className="space-y-2 border-b border-border p-3">
+    <div className="space-y-3 border-b border-border p-3">
+      <div className="flex items-center justify-between gap-2">
+        <div>
+          <div className="text-sm font-semibold">Fleet vehicles</div>
+          <div className="mt-0.5 text-[11px] text-subtle">Live status and telemetry</div>
+        </div>
+        <span className="rounded-full bg-surface-2 px-2.5 py-1 text-[11px] font-medium tabular text-muted">{count} units</span>
+      </div>
       <div className="relative">
         <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-subtle" />
         <Input className="pl-8" placeholder="Search plate, unit, driver" value={query} onChange={(e) => setQuery(e.target.value)} />
@@ -283,13 +308,19 @@ function FleetList({
   );
 }
 
-function Kpi({ label, value, tone }: { label: string; value: number | string; tone?: string }) {
+function Kpi({ icon: Icon, label, value, detail, tone }: { icon: typeof Truck; label: string; value: number | string; detail: string; tone?: string }) {
   return (
-    <div className="bg-surface px-3 py-2.5 sm:px-4 sm:py-3">
-      <div className="text-[11px] uppercase tracking-[0.14em] text-subtle">{label}</div>
-      <div className={cn("tabular text-xl font-semibold", tone === "live" && "text-live", tone === "idle" && "text-idle", tone === "down" && "text-down")}>
+    <div className="min-w-0 rounded-[var(--radius-md)] border border-border bg-surface p-3 shadow-[var(--shadow-panel)] transition-colors hover:border-border-strong sm:p-3.5">
+      <div className="flex items-center justify-between gap-2">
+        <div className="truncate text-[10px] font-semibold uppercase tracking-[0.14em] text-subtle">{label}</div>
+        <span className={cn("grid size-7 shrink-0 place-items-center rounded-[var(--radius-sm)] bg-surface-2 text-muted", tone === "live" && "bg-live/10 text-live", tone === "idle" && "bg-idle/10 text-idle", tone === "down" && "bg-down/10 text-down")}>
+          <Icon className="size-3.5" />
+        </span>
+      </div>
+      <div className={cn("mt-2 tabular text-2xl font-semibold tracking-tight", tone === "live" && "text-live", tone === "idle" && "text-idle", tone === "down" && "text-down")}>
         {value}
       </div>
+      <div className="mt-0.5 truncate text-[11px] text-subtle">{detail}</div>
     </div>
   );
 }
