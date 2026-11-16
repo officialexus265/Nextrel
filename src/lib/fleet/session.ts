@@ -44,16 +44,6 @@ export async function bootstrapSession(sql: Sql, userId: string): Promise<Sessio
     if (role === "super_admin") {
       await seedIfNeeded(sql, userId);
     }
-    if (role === "field_admin") {
-      const companies = await sql<{ id: string }>`select id from companies`;
-      for (const c of companies) {
-        await sql`
-          insert into field_assignments (user_id, company_id)
-          values (${userId}, ${c.id})
-          on conflict do nothing
-        `;
-      }
-    }
     await sql`
       insert into audit_logs (id, company_id, actor_id, action, target)
       values (${nid("aud")}, ${companyId}, ${userId}, 'user.joined', ${role})
