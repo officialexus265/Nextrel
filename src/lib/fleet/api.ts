@@ -2424,6 +2424,7 @@ export const approveRegistration = createServerFn({ method: "POST" })
     } else {
       await sql`delete from field_assignments where user_id = ${data.userId}`;
     }
+    if (target.email) await sql`delete from invites where lower(email) = ${target.email.toLowerCase()}`;
     await sql`insert into audit_logs (id, company_id, actor_id, action, target, meta)
       values (${nid("aud")}, ${data.companyId}, ${session.userId}, 'registration.approved',
       ${target.email ?? data.userId}, ${JSON.stringify({ role: data.role })}::jsonb)`;
