@@ -40,8 +40,9 @@ function LiveOps() {
     return vehicles.filter((v) => {
       if (filter !== "all" && v.movement !== filter) return false;
       if (!query) return true;
-      const hay = `${v.name} ${v.plate} ${v.driverName ?? ""} ${v.companyName}`.toLowerCase();
-      return hay.includes(query.toLowerCase());
+      const normalize = (value: string) => value.toLowerCase().replace(/[\\s-]/g, "");
+      const hay = normalize(`${v.name} ${v.plate} ${v.driverName ?? ""} ${v.companyName} ${v.deviceImei ?? ""}`);
+      return hay.includes(normalize(query));
     });
   }, [vehicles, filter, query]);
 
@@ -268,7 +269,7 @@ function FleetFilters({
       </div>
       <div className="relative">
         <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-subtle" />
-        <Input className="pl-8" placeholder="Search plate, unit, driver" value={query} onChange={(e) => setQuery(e.target.value)} />
+        <Input className="pl-8" placeholder="Search plate, unit, driver or IMEI" value={query} onChange={(e) => setQuery(e.target.value)} />
       </div>
       <div className="flex flex-wrap gap-1">
         {(["all", "moving", "idle", "stopped", "offline"] as const).map((f) => (

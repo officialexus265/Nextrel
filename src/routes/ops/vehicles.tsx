@@ -1,6 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
+import { Search } from "lucide-react";
 import { toast } from "sonner";
 import { deleteVehicle, listVehicles, saveVehicle } from "@/lib/fleet/api";
 import { PageHeader } from "@/components/layout/app-shell";
@@ -21,6 +22,13 @@ function VehiclesPage() {
   const [make, setMake] = useState("");
   const [model, setModel] = useState("");
   const [companyId, setCompanyId] = useState("");
+  const [search, setSearch] = useState("");
+  const normalizedSearch = search.toLowerCase().replace(/[\\s-]/g, "");
+  const filteredVehicles = (q.data ?? []).filter((v) =>
+    [v.plate, v.name, v.imei ?? "", v.make ?? "", v.model ?? ""].some((value) =>
+      value.toLowerCase().replace(/[\\s-]/g, "").includes(normalizedSearch),
+    ),
+  );
   const remove = useMutation({
     mutationFn: (id: string) => deleteVehicle({ data: { id } }),
     onSuccess: () => {
@@ -79,7 +87,12 @@ function VehiclesPage() {
           </Dialog>
         }
       />
-      <div className="overflow-x-auto px-4 pb-10 md:px-6">
+      <div className="space-y-3 px-4 pb-10 md:px-6">
+        <div className="relative max-w-md">
+          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-subtle" />
+          <Input className="pl-9" placeholder="Search by vehicle plate, IMEI or name (e.g. GV 454)" value={search} onChange={(e) => setSearch(e.target.value)} />
+        </div>
+        <div className="overflow-x-auto">
         <table className="w-full min-w-[800px] text-left text-sm">
           <thead className="text-xs uppercase tracking-[0.12em] text-subtle">
             <tr>
@@ -89,7 +102,7 @@ function VehiclesPage() {
             </tr>
           </thead>
           <tbody>
-            {(q.data ?? []).map((v) => (
+            {filteredVehicles.map((v) => (
               <tr key={v.id} className="border-t border-border">
                 <td className="px-2 py-2">
                   <Link to="/ops/vehicles/$vehicleId" params={{ vehicleId: v.id }} className="hover:underline">
@@ -123,6 +136,8 @@ function VehiclesPage() {
             ))}
           </tbody>
         </table>
+        {filteredVehicles.length === 0 && <p className="px-3 py-6 text-sm text-muted">{search ? "No vehicles match that search." : "No vehicles registered yet."}</p>}
+        </div>
       </div>
     </div>
   );

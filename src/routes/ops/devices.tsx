@@ -1,6 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
+import { Search } from "lucide-react";
 import { toast } from "sonner";
 import { assignDevice, deleteDevice, filePacket, getAppSession, listCalibrations, listCompanies, listDevices, listIngestJournal, listVehicles, queueDeviceCommand, saveCalibration, saveDevice } from "@/lib/fleet/api";
 import { DECODER_NAMES, decode, samplePacket, type DecoderName, type NormalizedFix } from "@/lib/fleet/decoders";
@@ -34,6 +35,15 @@ function DevicesPage() {
   const [vehicleId, setVehicleId] = useState("");
   const [capabilities, setCapabilities] = useState<DeviceCapability[]>([]);
   const [connectionMode, setConnectionMode] = useState<DeviceConnectionMode>("live");
+  const [deviceSearch, setDeviceSearch] = useState("");
+  const selectedCompanyId = companyId || companies.data?.[0]?.id || "";
+  const formVehicles = (vehicles.data ?? []).filter((v) => v.company_id === selectedCompanyId);
+  const normalizedDeviceSearch = deviceSearch.toLowerCase().replace(/[\\s-]/g, "");
+  const filteredDevices = (q.data ?? []).filter((d) => {
+    if (!normalizedDeviceSearch) return true;
+    const values = [d.imei, d.vehicleName ?? "", d.plate ?? ""];
+    return values.some((value) => value.toLowerCase().replace(/[\\s-]/g, "").includes(normalizedDeviceSearch));
+  });
 
   const mut = useMutation({
     mutationFn: () =>
@@ -148,7 +158,7 @@ function DevicesPage() {
                   <Label>Assign vehicle</Label>
                   <select className="h-10 w-full rounded-[var(--radius-sm)] border border-border bg-surface-2 px-3 text-sm" value={vehicleId} onChange={(e) => setVehicleId(e.target.value)}>
                     <option value="">Unassigned</option>
-                    {(vehicles.data ?? []).map((v) => <option key={v.id} value={v.id}>{v.plate} — {v.name}</option>)}
+                    {formVehicles.map((v) => <option key={v.id} value={v.id}>{v.plate} — {v.name}</option>)}
                   </select>
                 </div>
                 <Button className="w-full" type="submit" disabled={mut.isPending}>{editingId ? "Save changes" : "Register device"}</Button>
@@ -158,7 +168,12 @@ function DevicesPage() {
         }
       />
       <PacketBench />
-      <div className="overflow-x-auto px-4 pb-10 md:px-6">
+      <div className="space-y-3 px-4 pb-10 md:px-6">
+        <div className="relative max-w-md">
+          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-subtle" />
+          <Input className="pl-9" placeholder="Search devices by IMEI or vehicle plate (e.g. GV 454)" value={deviceSearch} onChange={(e) => setDeviceSearch(e.target.value)} />
+        </div>
+        <div className="overflow-x-auto">
         <table className="w-full min-w-[1280px] text-left text-sm">
           <thead className="text-xs uppercase tracking-[0.12em] text-subtle">
             <tr>
@@ -168,7 +183,7 @@ function DevicesPage() {
             </tr>
           </thead>
           <tbody>
-            {(q.data ?? []).map((d) => (
+            {filteredDevices.map((d) => (
               <tr key={d.id} className="border-t border-border align-middle hover:bg-surface-2/40">
                 <td className="px-2 py-2 font-mono text-xs">{d.imei}</td>
                 <td className="px-2 py-2"><div className="font-medium">{d.manufacturer || "Unknown manufacturer"}</div><div className="text-xs text-muted">{d.model || "Model not specified"}</div></td>
@@ -222,19 +237,21 @@ function DevicesPage() {
                     <span className="shrink-0 text-[11px] font-medium uppercase tracking-wide text-subtle">Assign to</span>
                     <select
                       className="h-8 min-w-0 flex-1 rounded-[var(--radius-xs)] border border-border bg-surface-2 px-2.5 text-xs font-medium"
-                      defaultValue={d.vehicleId ?? ""}
+                      value={d.vehicleId ?? ""}
                       onChange={async (e) => {
                         try {
                           await assignDevice({ data: { deviceId: d.id, vehicleId: e.target.value || null } });
                           toast.success("Assignment updated");
                           qc.invalidateQueries({ queryKey: ["devices"] });
+                          qc.invalidateQueries({ queryKey: ["live-fleet"] });
+                          qc.invalidateQueries({ queryKey: ["vehicles"] });
                         } catch (error) {
                           toast.error(error instanceof Error ? error.message : "Could not update assignment");
                         }
                       }}
                     >
                       <option value="">Unassigned</option>
-                      {(vehicles.data ?? []).map((v) => (
+                      {(vehicles.data ?? []).filter((v) => v.company_id === d.companyId).map((v) => (
                         <option key={v.id} value={v.id}>{v.plate}</option>
                       ))}
                     </select>
@@ -245,6 +262,8 @@ function DevicesPage() {
             ))}
           </tbody>
         </table>
+        {filteredDevices.length === 0 && <p className="px-3 py-6 text-sm text-muted">{deviceSearch ? "No devices match that IMEI or vehicle plate." : "No devices registered yet."}</p>}
+        </div>
       </div>
     </div>
   );
