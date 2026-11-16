@@ -58,6 +58,8 @@ export type SessionContext = {
   companyName: string | null;
   companyMark: string | null;
   impersonating: boolean;
+  approvalStatus: "pending" | "approved" | "rejected";
+  isCompanyOwner: boolean;
 };
 
 export type LiveVehicle = {
