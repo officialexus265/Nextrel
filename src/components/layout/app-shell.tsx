@@ -92,7 +92,10 @@ function navFor(role: Role, isCompanyOwner = false): Item[] {
   } else {
     ops.push({ to: "/ops/media", label: "Media", icon: Camera });
   }
-  if (isCompanyOwner) ops.push({ to: "/ops/ownership", label: "Ownership", icon: Shield });
+  if (isCompanyOwner) {
+    ops.push({ to: "/ops/users", label: "Team", icon: Users });
+    ops.push({ to: "/ops/ownership", label: "Ownership", icon: Shield });
+  }
   return ops;
 }
 
