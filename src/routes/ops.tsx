@@ -9,6 +9,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
+import type { SessionContext } from "@/lib/fleet/types";
 
 export const Route = createFileRoute("/ops")({ component: OpsLayout });
 
@@ -61,7 +62,7 @@ function BootScreen({ label }: { label: string }) {
   );
 }
 
-function PendingWorkspace({ session }: { session: NonNullable<ReturnType<typeof useCurrentUserState>["user"]> extends never ? never : import("@/lib/fleet/types").SessionContext }) {
+function PendingWorkspace({ session }: { session: SessionContext }) {
   const qc = useQueryClient();
   const invitations = useQuery({ queryKey: ["ownership-transfers"], queryFn: () => listOwnershipTransfers() });
   const accept = useMutation({
@@ -81,7 +82,7 @@ function PendingWorkspace({ session }: { session: NonNullable<ReturnType<typeof 
           <p className="mt-2 text-sm text-muted">
             {session.approvalStatus === "rejected"
               ? "Your registration was declined. Contact the System Owner if you believe this was a mistake."
-              : <>Your account is signed in as {session.email ?? "your email"}, but the System Owner has not assigned an operational role yet.</>}
+              : <>Your account is signed in as {session.email ?? "your email"}. A System Owner must approve your registration and assign your operational role.</>}
           </p>
         </div>
         {(invitations.data ?? []).filter((item) => item.direction === "incoming" && item.status === "pending").map((item) => (
