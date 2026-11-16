@@ -33,16 +33,9 @@ export async function bootstrapSession(sql: Sql, userId: string): Promise<Sessio
 
   if (!profile) {
     const superCount = await sql<{ n: number }>`select count(*)::int as n from profiles where role = 'super_admin'`;
-    const invite = auth.email
-      ? (
-          await sql<{ role: string; company_id: string | null }>`
-            select role, company_id from invites where lower(email) = ${auth.email.toLowerCase()} order by created_at desc limit 1
-          `
-        )[0]
-      : undefined;
     const role: Role = superCount[0]?.n ? "pending" : "super_admin";
     const approvalStatus = role === "pending" ? "pending" : "approved";
-    const companyId = role === "pending" ? invite?.company_id ?? null : null;
+    const companyId = null;
     await sql`
       insert into profiles (user_id, role, company_id, name, email, approval_status)
       values (${userId}, ${role}, ${companyId}, ${auth.name}, ${auth.email}, ${approvalStatus})
