@@ -127,6 +127,7 @@ export function AppShell({
   });
   const [switching, setSwitching] = useState(false);
   const items = navFor(session.role, session.isCompanyOwner);
+  const activeItem = items.find((item) => pathname === item.to || (item.to !== "/ops" && pathname.startsWith(item.to))) ?? items[0];
   const mobile = items.slice(0, 3);
   const overflow = items.slice(3);
   const moreActive = overflow.some(
@@ -172,16 +173,17 @@ export function AppShell({
   }
 
   return (
-    <div className="flex min-h-dvh bg-bg text-fg">
-      <aside className="hidden w-60 shrink-0 flex-col border-r border-border bg-surface md:flex">
-        <div className="flex items-center gap-2 px-4 py-4">
-          <KestrelMark />
-          <div>
-            <div className="text-sm font-semibold tracking-[0.18em]">KESTREL</div>
-            <div className="text-[11px] uppercase tracking-[0.16em] text-subtle">Fleet ops</div>
+    <div className="min-h-dvh bg-bg text-fg md:flex">
+      <aside className="sticky top-0 hidden h-dvh w-64 shrink-0 flex-col border-r border-border bg-surface md:flex">
+        <div className="flex items-center gap-3 border-b border-border px-5 py-5">
+          <KestrelMark className="size-10 rounded-[var(--radius-md)]" />
+          <div className="min-w-0">
+            <div className="text-sm font-bold tracking-[0.2em]">KESTREL</div>
+            <div className="mt-0.5 text-[10px] font-medium uppercase tracking-[0.18em] text-subtle">Fleet operations</div>
           </div>
         </div>
-        <nav className="flex flex-1 flex-col gap-0.5 px-2 pb-4">
+        <div className="px-5 pb-2 pt-5 text-[10px] font-semibold uppercase tracking-[0.18em] text-subtle">Workspace</div>
+        <nav aria-label="Primary navigation" className="flex flex-1 flex-col gap-1 px-3 pb-4">
           {items.map((item) => {
             const active = pathname === item.to || (item.to !== "/ops" && pathname.startsWith(item.to));
             const Icon = item.icon;
@@ -190,8 +192,8 @@ export function AppShell({
                 key={item.to}
                 to={item.to}
                 className={cn(
-                  "flex h-10 items-center gap-2.5 rounded-[var(--radius-sm)] px-2.5 text-sm text-muted hover:bg-surface-2 hover:text-fg",
-                  active && "bg-surface-2 text-fg",
+                  "flex h-11 items-center gap-3 rounded-[var(--radius-sm)] border border-transparent px-3 text-sm text-muted transition-colors hover:bg-surface-2 hover:text-fg",
+                  active && "border-border bg-surface-2 font-semibold text-fg shadow-[var(--shadow-panel)]",
                 )}
               >
                 <Icon className="size-4" />
@@ -200,24 +202,32 @@ export function AppShell({
             );
           })}
         </nav>
-        <div className="flex items-center gap-2 border-t border-border p-3">
+        <div className="border-t border-border p-4">
           {session.companyMark ? (
             <span className="grid size-8 shrink-0 place-items-center rounded-[var(--radius-sm)] border border-border bg-surface-2 text-[11px] font-semibold tracking-[0.12em]">
               {session.companyMark}
             </span>
           ) : null}
           <div className="min-w-0">
-            <div className="text-[11px] uppercase tracking-[0.14em] text-subtle">{ROLE_LABEL[session.role]}</div>
-            <div className="truncate text-sm">{session.companyName ?? session.name ?? "Kestrel"}</div>
+            <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-subtle">{ROLE_LABEL[session.role]}</div>
+            <div className="truncate text-sm font-medium">{session.companyName ?? session.name ?? "Kestrel"}</div>
+            <div className="mt-0.5 truncate text-[11px] text-subtle">{session.email ?? "Workspace account"}</div>
           </div>
         </div>
       </aside>
 
-      <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex h-14 items-center gap-2 border-b border-border bg-surface/80 px-3 backdrop-blur md:px-5">
-          <div className="flex items-center gap-2 md:hidden">
+      <div className="flex min-h-dvh min-w-0 flex-1 flex-col">
+        <header className="sticky top-0 z-30 flex h-16 shrink-0 items-center gap-3 border-b border-border bg-surface/90 px-3 backdrop-blur-xl md:px-6">
+          <div className="flex min-w-0 items-center gap-2 md:hidden">
             <KestrelMark />
-            <span className="text-sm font-semibold tracking-[0.14em]">KESTREL</span>
+            <div className="min-w-0">
+              <div className="text-xs font-bold tracking-[0.16em]">KESTREL</div>
+              <div className="truncate text-[10px] text-subtle">{activeItem?.label ?? "Workspace"}</div>
+            </div>
+          </div>
+          <div className="hidden min-w-0 md:block">
+            <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-subtle">Workspace</div>
+            <div className="truncate text-sm font-semibold">{activeItem?.label ?? "Overview"}</div>
           </div>
           {session.impersonating && (
             <Badge tone="idle">
@@ -225,7 +235,7 @@ export function AppShell({
               {session.companyName ? ` · ${session.companyName}` : ""}
             </Badge>
           )}
-          <div className="ml-auto flex items-center gap-2">
+          <div className="ml-auto flex shrink-0 items-center gap-2">
             {canSwitch && (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
@@ -279,15 +289,15 @@ export function AppShell({
                 </DropdownMenuContent>
               </DropdownMenu>
             )}
-            <div className="hidden items-center gap-2 text-xs text-muted sm:flex">
-              <Activity className="size-3.5 text-live" />
-              Live
+            <div className="hidden items-center gap-2 rounded-full border border-live/25 bg-live/10 px-3 py-1.5 text-[11px] font-medium text-live sm:flex">
+              <Activity className="size-3.5" />
+              System live
             </div>
             <UserButton />
           </div>
         </header>
-        <main className="min-h-0 flex-1 overflow-auto pb-16 md:pb-0">{children}</main>
-        <nav className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-4 border-t border-border bg-surface/95 backdrop-blur md:hidden">
+        <main className="min-h-0 flex-1 overflow-auto pb-20 md:pb-0">{children}</main>
+        <nav aria-label="Mobile navigation" className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-4 border-t border-border bg-surface/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden">
           {mobile.map((item) => {
             const Icon = item.icon;
             const active = pathname === item.to || (item.to !== "/ops" && pathname.startsWith(item.to));
@@ -366,13 +376,13 @@ export function PageHeader({
   actions?: React.ReactNode;
 }) {
   return (
-    <div className="flex flex-wrap items-end justify-between gap-3 px-4 py-5 md:px-6">
+    <header className="flex flex-wrap items-end justify-between gap-3 border-b border-border bg-bg/80 px-4 py-5 md:px-6">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
         {subtitle && <p className="mt-1 text-sm text-muted">{subtitle}</p>}
       </div>
       {actions}
-    </div>
+    </header>
   );
 }
 

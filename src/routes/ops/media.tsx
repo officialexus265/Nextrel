@@ -84,7 +84,7 @@ function MediaPage() {
               </div>
               <h2 className="mt-2 text-sm font-medium">{m.caption}</h2>
               <p className="mt-1 text-xs text-muted">
-                {m.vehicleName} · {new Date(m.ts).toLocaleString()}
+                {m.vehicleName} · {m.plate} · {new Date(m.ts).toLocaleString()}
               </p>
             </div>
           </article>

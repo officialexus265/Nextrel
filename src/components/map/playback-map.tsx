@@ -9,6 +9,7 @@ export type PlaybackEvent = {
   ts: string;
   lat: number | null;
   lng: number | null;
+  litres?: number;
 };
 
 const EVENT_COLOR: Record<string, string> = {

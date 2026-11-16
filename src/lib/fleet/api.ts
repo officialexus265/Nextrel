@@ -292,10 +292,11 @@ export const getLiveFleet = createServerFn({ method: "GET" })
       severity: string;
       vehicle_id: string | null;
       vehicle_name: string | null;
+      plate: string | null;
       created_at: string;
       company_id: string;
     }>`
-      select a.id, a.title, a.severity, a.vehicle_id, v.name as vehicle_name, a.created_at, a.company_id
+      select a.id, a.title, a.severity, a.vehicle_id, v.name as vehicle_name, v.plate, a.created_at, a.company_id
       from alerts a
       left join vehicles v on v.id = a.vehicle_id
       where a.status = 'open'
@@ -327,6 +328,7 @@ export const getLiveFleet = createServerFn({ method: "GET" })
         severity: a.severity as LivePulse["severity"],
         vehicleId: a.vehicle_id,
         vehicleName: a.vehicle_name,
+        plate: a.plate,
         createdAt: toIso(a.created_at),
       }));
 
@@ -336,10 +338,11 @@ export const getLiveFleet = createServerFn({ method: "GET" })
       severity: string;
       vehicle_id: string;
       vehicle_name: string;
+      plate: string;
       ts: string;
       company_id: string;
     }>`
-      select b.id, b.kind, b.severity, b.vehicle_id, v.name as vehicle_name, b.ts, b.company_id
+      select b.id, b.kind, b.severity, b.vehicle_id, v.name as vehicle_name, v.plate, b.ts, b.company_id
       from behavior_events b
       join vehicles v on v.id = b.vehicle_id
       where b.ts > now() - interval '12 hours'
@@ -356,6 +359,7 @@ export const getLiveFleet = createServerFn({ method: "GET" })
         severity: b.severity as BehaviorChip["severity"],
         vehicleId: b.vehicle_id,
         vehicleName: b.vehicle_name,
+        plate: b.plate,
         ts: toIso(b.ts),
       }));
 
@@ -1157,6 +1161,7 @@ export const listDevices = createServerFn({ method: "GET" })
       company_name: string | null;
       vehicle_id: string | null;
       vehicle_name: string | null;
+      plate: string | null;
       imei: string;
       manufacturer: string | null;
       model: string | null;
@@ -1174,7 +1179,7 @@ export const listDevices = createServerFn({ method: "GET" })
       last_status: string | null;
       cal_count: number | null;
     }>`
-      select d.id, d.company_id, c.name as company_name, d.vehicle_id, v.name as vehicle_name,
+      select d.id, d.company_id, c.name as company_name, d.vehicle_id, v.name as vehicle_name, v.plate,
         d.imei, d.manufacturer, d.model, d.protocol, d.decoder, d.capabilities,
         d.capability_source, d.capabilities_verified_at, d.connection_mode,
         d.last_seen, d.gsm_signal, d.gps_signal, d.battery,
@@ -1187,7 +1192,7 @@ export const listDevices = createServerFn({ method: "GET" })
       order by d.imei
     `;
     return rows
-      .filter((r) => session.role === "super_admin" || inScope(scope, r.company_id))
+      .filter((r) => inScope(scope, r.company_id))
       .map((r): DeviceRow => {
         const rawCapabilities = typeof r.capabilities === "string" ? JSON.parse(r.capabilities) as unknown : r.capabilities;
         const capabilities = Array.isArray(rawCapabilities)
@@ -1195,7 +1200,7 @@ export const listDevices = createServerFn({ method: "GET" })
           : [];
         return {
           id: r.id, companyId: r.company_id, companyName: r.company_name,
-          vehicleId: r.vehicle_id, vehicleName: r.vehicle_name, imei: r.imei,
+          vehicleId: r.vehicle_id, vehicleName: r.vehicle_name, plate: r.plate, imei: r.imei,
           manufacturer: r.manufacturer, model: r.model, protocol: r.protocol, decoder: r.decoder,
           capabilities, capabilitySource: r.capability_source as DeviceRow["capabilitySource"],
           capabilitiesVerifiedAt: r.capabilities_verified_at ? toIso(r.capabilities_verified_at) : null,
@@ -1272,10 +1277,20 @@ export const assignDevice = createServerFn({ method: "POST" })
   .handler(async ({ context, data }) => {
     const { sql, session } = await ctx(context.userId);
     if (!["super_admin", "field_admin", "company_admin"].includes(session.role)) throw new Error("Forbidden");
-    await sql`update devices set vehicle_id = ${data.vehicleId} where id = ${data.deviceId}`;
+    const scope = await companyScope(sql, session);
+    const device = (await sql<{ company_id: string | null }>`select company_id from devices where id = ${data.deviceId} limit 1`)[0];
+    if (!device || !inScope(scope, device.company_id)) throw new Error("Device not found");
+    if (data.vehicleId) {
+      const vehicle = (await sql<{ company_id: string }>`select company_id from vehicles where id = ${data.vehicleId} limit 1`)[0];
+      if (!vehicle || vehicle.company_id !== device.company_id) {
+        throw new Error("You can only assign a device to a vehicle belonging to the same company");
+      }
+    }
+    await sql`update devices set vehicle_id = ${data.vehicleId}
+      where id = ${data.deviceId} and company_id is not distinct from ${device.company_id}`;
     await sql`
-      insert into audit_logs (id, actor_id, action, target)
-      values (${nid("aud")}, ${session.userId}, 'device.assigned', ${data.deviceId})
+      insert into audit_logs (id, company_id, actor_id, action, target)
+      values (${nid("aud")}, ${device.company_id}, ${session.userId}, 'device.assigned', ${data.deviceId})
     `;
     return { ok: true };
   });
@@ -1608,14 +1623,21 @@ export const getPlayback = createServerFn({ method: "POST" })
       id: string;
       type: string;
       title: string | null;
+      litres: number;
       ts: string;
       lat: number | null;
       lng: number | null;
     }>`
-      select id, kind as type, notes as title, ts, lat, lng from fuel_events
+      select id, kind as type, notes as title, litres, ts, lat, lng from fuel_events
       where vehicle_id = ${data.vehicleId} and ts >= ${data.from} and ts <= ${data.to}
       order by ts
     `;
+    const fuelSummary = (await sql<{ fuel_used: number | null; recorded_count: number }>`
+      select sum(fuel_used) as fuel_used, count(fuel_used)::int as recorded_count
+      from trips
+      where vehicle_id = ${data.vehicleId}
+        and started_at >= ${data.from} and ended_at is not null and ended_at <= ${data.to}
+    `)[0];
     const stops = await sql<{
       id: string;
       title: string | null;
@@ -1638,6 +1660,7 @@ export const getPlayback = createServerFn({ method: "POST" })
         ts: toIso(e.ts),
         lat: e.lat,
         lng: e.lng,
+        litres: Number(e.litres),
       })),
       ...stops.map((e) => ({
         id: e.id,
@@ -1671,7 +1694,12 @@ export const getPlayback = createServerFn({ method: "POST" })
         lng: e.lng,
       })),
     ];
-    return { vehicle: veh, points, events };
+    return {
+      vehicle: veh,
+      points,
+      events,
+      fuelUsed: Number(fuelSummary?.recorded_count ?? 0) > 0 ? Number(fuelSummary?.fuel_used ?? 0) : null,
+    };
   });
 
 export const getReports = createServerFn({ method: "POST" })
@@ -2179,6 +2207,7 @@ export const listMaintenance = createServerFn({ method: "GET" })
       id: string;
       vehicle_id: string;
       vehicle_name: string;
+      plate: string;
       title: string;
       due_odometer: number | null;
       due_hours: number | null;
@@ -2189,7 +2218,7 @@ export const listMaintenance = createServerFn({ method: "GET" })
       odometer_km: number;
       engine_hours: number;
     }>`
-      select m.id, m.vehicle_id, v.name as vehicle_name, m.title, m.due_odometer, m.due_hours, m.due_date,
+      select m.id, m.vehicle_id, v.name as vehicle_name, v.plate, m.title, m.due_odometer, m.due_hours, m.due_date,
         m.status, m.notes, m.company_id, v.odometer_km, v.engine_hours
       from maintenance_reminders m join vehicles v on v.id = m.vehicle_id
       order by m.status desc, m.due_date asc nulls last
@@ -2201,6 +2230,7 @@ export const listMaintenance = createServerFn({ method: "GET" })
           id: r.id,
           vehicleId: r.vehicle_id,
           vehicleName: r.vehicle_name,
+          plate: r.plate,
           title: r.title,
           dueOdometer: r.due_odometer,
           dueHours: r.due_hours,
@@ -2277,6 +2307,7 @@ export const listMedia = createServerFn({ method: "GET" })
       id: string;
       vehicle_id: string;
       vehicle_name: string;
+      plate: string;
       kind: string;
       path: string;
       caption: string | null;
@@ -2284,7 +2315,7 @@ export const listMedia = createServerFn({ method: "GET" })
       ts: string;
       company_id: string;
     }>`
-      select m.id, m.vehicle_id, v.name as vehicle_name, m.kind, m.path, m.caption, m.event_type, m.ts, m.company_id
+      select m.id, m.vehicle_id, v.name as vehicle_name, v.plate, m.kind, m.path, m.caption, m.event_type, m.ts, m.company_id
       from media_files m join vehicles v on v.id = m.vehicle_id
       order by m.ts desc
     `;
@@ -2295,6 +2326,7 @@ export const listMedia = createServerFn({ method: "GET" })
           id: r.id,
           vehicleId: r.vehicle_id,
           vehicleName: r.vehicle_name,
+          plate: r.plate,
           kind: r.kind,
           path: r.path,
           caption: r.caption,
@@ -2667,8 +2699,9 @@ export const getFleetBrief = createServerFn({ method: "POST" })
       expires_on: string | null;
       company_id: string;
       vehicle_name: string | null;
+      plate: string | null;
     }>`
-      select d.id, d.title, d.kind, d.expires_on, d.company_id, v.name as vehicle_name
+      select d.id, d.title, d.kind, d.expires_on, d.company_id, v.name as vehicle_name, v.plate
       from documents d
       left join vehicles v on v.id = d.vehicle_id
       where d.expires_on is not null
@@ -2758,6 +2791,7 @@ export const getFleetBrief = createServerFn({ method: "POST" })
         title: d.title,
         kind: d.kind,
         vehicleName: d.vehicle_name,
+        plate: d.plate,
         expiresOn: String(d.expires_on).slice(0, 10),
       }));
 
@@ -3104,7 +3138,7 @@ export const listIngestJournal = createServerFn({ method: "GET" })
         if (row.company_id) return inScope(scope, row.company_id);
         return session.role === "field_admin";
       })
-      .slice(0, 12)
+      .slice(0, 8)
       .map(
         (row): IngestRow => ({
           id: row.id,
