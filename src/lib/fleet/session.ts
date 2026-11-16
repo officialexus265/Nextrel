@@ -24,7 +24,7 @@ export async function bootstrapSession(sql: Sql, userId: string): Promise<Sessio
   const auth = authUsers[0] ?? { id: userId, name: null, email: null };
 
   let profile = (
-    await sql<{ role: string; company_id: string | null; name: string | null; email: string | null; active: boolean }>`
+    await sql<{ role: string; company_id: string | null; name: string | null; email: string | null; active: boolean; approval_status: "pending" | "approved" | "rejected" }>`
       select role, company_id, name, email, active, approval_status from profiles where user_id = ${userId}
     `
   )[0];
