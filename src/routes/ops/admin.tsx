@@ -26,7 +26,7 @@ function AdminPage() {
   const mut = useMutation({
     mutationFn: () => createCompany({ data: { id: editingCompanyId ?? undefined, name, city, ownerEmail: editingCompanyId ? undefined : ownerEmail.trim() || undefined } }),
     onSuccess: () => {
-      toast.success(editingCompanyId ? "Company updated" : ownerEmail.trim() ? "Company created and ownership invitation recorded" : "Company created");
+      toast.success(editingCompanyId ? "Company updated" : ownerEmail.trim() ? "Company created and in-app ownership invitation recorded" : "Company created");
       setOwnerEmail("");
       setOpen(false);
       setEditingCompanyId(null);
