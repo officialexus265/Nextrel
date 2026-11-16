@@ -22,10 +22,12 @@ function AdminPage() {
   const [name, setName] = useState("");
   const [city, setCity] = useState("Nairobi");
   const [staffEmail, setStaffEmail] = useState("");
+  const [ownerEmail, setOwnerEmail] = useState("");
   const mut = useMutation({
-    mutationFn: () => createCompany({ data: { id: editingCompanyId ?? undefined, name, city } }),
+    mutationFn: () => createCompany({ data: { id: editingCompanyId ?? undefined, name, city, ownerEmail: editingCompanyId ? undefined : ownerEmail.trim() || undefined } }),
     onSuccess: () => {
-      toast.success(editingCompanyId ? "Company updated" : "Company created");
+      toast.success(editingCompanyId ? "Company updated" : ownerEmail.trim() ? "Company created and in-app ownership invitation recorded" : "Company created");
+      setOwnerEmail("");
       setOpen(false);
       setEditingCompanyId(null);
       qc.invalidateQueries({ queryKey: ["companies"] });
@@ -73,6 +75,7 @@ function AdminPage() {
               >
                 <div className="space-y-1"><Label>Name</Label><Input required value={name} onChange={(e) => setName(e.target.value)} /></div>
                 <div className="space-y-1"><Label>City</Label><Input value={city} onChange={(e) => setCity(e.target.value)} /></div>
+                {!editingCompanyId && <div className="space-y-1"><Label>Initial company owner email (optional)</Label><Input type="email" value={ownerEmail} onChange={(e) => setOwnerEmail(e.target.value)} placeholder="owner@company.com" /></div>}
                 <Button className="w-full" type="submit" disabled={mut.isPending}>{editingCompanyId ? "Save changes" : "Create"}</Button>
               </form>
             </DialogContent>
