@@ -65,7 +65,7 @@ function Home() {
           <span className="text-sm font-semibold tracking-[0.22em]">KESTREL</span>
         </div>
         <Button asChild size="sm" variant="secondary">
-          <Link to="/login">Sign in</Link>
+          <Link to="/login" search={{}}>Sign in</Link>
         </Button>
       </header>
 
