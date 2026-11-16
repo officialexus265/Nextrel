@@ -976,7 +976,7 @@ export const listCompanies = createServerFn({ method: "GET" })
   .middleware([authMiddleware])
   .handler(async ({ context }) => {
     const { sql, session } = await ctx(context.userId);
-    if (session.realRole !== "super_admin" && session.role !== "field_admin" && session.role !== "company_admin") {
+    if (session.realRole !== "super_admin" && session.role !== "field_admin" && session.role !== "company_admin" && !session.isCompanyOwner) {
       throw new Error("Forbidden");
     }
     const rows = await sql<{
@@ -1030,6 +1030,7 @@ export const createCompany = createServerFn({ method: "POST" })
       await sql`insert into audit_logs (id, company_id, actor_id, action, target, meta) values (${nid("aud")}, ${data.id}, ${session.userId}, 'company.updated', ${data.name}, ${JSON.stringify({ previousName: current.name })}::jsonb)`;
       return { id: data.id };
     }
+    if (data.ownerEmail?.trim() && session.email?.toLowerCase() === data.ownerEmail.trim().toLowerCase()) throw new Error("The initial company owner must be a different account");
     const id = nid("co");
     const slug = data.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") + "-" + id.slice(-4);
     const mark = companyMarkFromName(data.name);
@@ -1040,7 +1041,6 @@ export const createCompany = createServerFn({ method: "POST" })
     await sql`insert into audit_logs (id, company_id, actor_id, action, target) values (${nid("aud")}, ${id}, ${session.userId}, 'company.created', ${data.name})`;
     if (data.ownerEmail?.trim()) {
       const email = data.ownerEmail.trim().toLowerCase();
-      if (session.email?.toLowerCase() === email) throw new Error("The initial company owner must be a different account");
       const transferId = nid("own");
       await sql`insert into company_ownership_transfers (id, company_id, from_owner_user_id, to_email, created_by, status, expires_at)
         values (${transferId}, ${id}, null, ${email}, ${session.userId}, 'pending', now() + interval '14 days')`;
@@ -2546,12 +2546,20 @@ export const inviteUser = createServerFn({ method: "POST" })
   )
   .handler(async ({ context, data }) => {
     const { sql, session } = await ctx(context.userId);
-    if (session.role === "company_admin") {
+    let ownerCompanyIds: string[] = [];
+    if (session.isCompanyOwner) {
+      const owned = await sql<{ id: string }>`select id from companies where owner_user_id = ${session.userId}`;
+      ownerCompanyIds = owned.map((row) => row.id);
+    }
+    if (session.isCompanyOwner && ownerCompanyIds.length) {
+      if (!["tracker", "accounts", "company_admin"].includes(data.role)) throw new Error("Forbidden");
+      if (data.companyId && !ownerCompanyIds.includes(data.companyId)) throw new Error("Forbidden");
+    } else if (session.role === "company_admin") {
       if (!["tracker", "accounts", "company_admin"].includes(data.role)) throw new Error("Forbidden");
     } else if (session.realRole !== "super_admin") {
       throw new Error("Forbidden");
     }
-    const companyId = data.companyId ?? session.companyId;
+    const companyId = data.companyId ?? (ownerCompanyIds[0] ?? session.companyId);
     await sql`
       insert into invites (id, email, role, company_id, created_by)
       values (${nid("inv")}, ${data.email.toLowerCase()}, ${data.role}, ${companyId}, ${session.userId})
