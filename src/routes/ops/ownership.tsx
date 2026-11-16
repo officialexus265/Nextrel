@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { toast } from "sonner";
-import { createOwnershipTransfer, getAppSession, listCompanies, listOwnershipTransfers } from "@/lib/fleet/api";
+import { acceptOwnershipTransfer, createOwnershipTransfer, getAppSession, listCompanies, listOwnershipTransfers } from "@/lib/fleet/api";
 import { PageHeader } from "@/components/layout/app-shell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -21,6 +21,16 @@ function OwnershipPage() {
     enabled: session.data?.realRole === "super_admin" || session.data?.isCompanyOwner === true,
   });
   const [emails, setEmails] = useState<Record<string, string>>({});
+  const accept = useMutation({
+    mutationFn: (transferId: string) => acceptOwnershipTransfer({ data: { transferId } }),
+    onSuccess: () => {
+      toast.success("Company ownership accepted. Operational access remains separately assigned.");
+      qc.invalidateQueries({ queryKey: ["ownership-transfers"] });
+      qc.invalidateQueries({ queryKey: ["app-session"] });
+      qc.invalidateQueries({ queryKey: ["companies"] });
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
   const invite = useMutation({
     mutationFn: (input: { companyId: string; email: string }) => createOwnershipTransfer({ data: input }),
     onSuccess: () => {
@@ -45,6 +55,9 @@ function OwnershipPage() {
                 <div className="mt-1 text-xs text-subtle">Expires {new Date(transfer.expires_at).toLocaleString()}</div>
               </div>
               <Badge tone={transfer.status === "accepted" ? "live" : transfer.status === "pending" ? "idle" : "muted"}>{transfer.status}</Badge>
+              {transfer.direction === "incoming" && transfer.status === "pending" && (
+                <Button size="sm" disabled={accept.isPending} onClick={() => accept.mutate(transfer.id)}>Accept ownership</Button>
+              )}
             </Card>
           ))}
           {(transfers.data ?? []).length === 0 && <p className="text-sm text-muted">No ownership invitations or transfers yet.</p>}
