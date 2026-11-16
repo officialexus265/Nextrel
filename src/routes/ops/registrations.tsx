@@ -98,7 +98,7 @@ function RegistrationCard({ item, companies, busy, onApprove, onReject }: {
       </div>
       <div className="flex flex-wrap justify-end gap-2">
         <Button variant="ghost" disabled={busy} onClick={onReject}>Reject</Button>
-        <Button disabled={busy || (role !== "field_admin" && !companyId)} onClick={() => onApprove(role, role === "field_admin" ? (companyId || null) : companyId)}>
+        <Button disabled={busy || (role !== "field_admin" && !companyId)} onClick={() => onApprove(role, role === "field_admin" ? null : companyId)}>
           Approve account
         </Button>
       </div>
