@@ -125,6 +125,13 @@ export function canSeeBilling(role: Role) {
 
 export async function companyScope(sql: Sql, session: SessionContext): Promise<string[] | null> {
   if (session.role === "super_admin" && !session.impersonating) return null;
+  const ownedRows = await sql<{ id: string }>`select id from companies where owner_user_id = ${session.userId}`;
+  if (ownedRows.length) {
+    const assigned = session.role === "field_admin"
+      ? await sql<{ company_id: string }>`select company_id from field_assignments where user_id = ${session.userId}`
+      : [];
+    return [...new Set([...ownedRows.map((row) => row.id), ...assigned.map((row) => row.company_id), ...(session.companyId ? [session.companyId] : [])])];
+  }
   if (session.role === "field_admin") {
     const rows = await sql<{ company_id: string }>`
       select company_id from field_assignments where user_id = ${session.userId}
