@@ -42,7 +42,7 @@ export async function bootstrapSession(sql: Sql, userId: string): Promise<Sessio
       : undefined;
     const role: Role = superCount[0]?.n ? "pending" : "super_admin";
     const approvalStatus = role === "pending" ? "pending" : "approved";
-    const companyId = invite?.company_id ?? null;
+    const companyId = role === "pending" ? invite?.company_id ?? null : null;
     await sql`
       insert into profiles (user_id, role, company_id, name, email, approval_status)
       values (${userId}, ${role}, ${companyId}, ${auth.name}, ${auth.email}, ${approvalStatus})
