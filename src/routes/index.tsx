@@ -78,7 +78,7 @@ function Home() {
 
         <div className="mt-10 flex flex-wrap items-center gap-4">
           <Button asChild size="lg" className="h-12 px-7 text-sm tracking-wide">
-            <Link to="/login">
+            <Link to="/login" search={{}}>
               Enter console
               <ArrowRight className="ml-1.5 size-4" />
             </Link>
