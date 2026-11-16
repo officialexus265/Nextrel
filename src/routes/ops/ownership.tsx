@@ -24,7 +24,7 @@ function OwnershipPage() {
   const invite = useMutation({
     mutationFn: (input: { companyId: string; email: string }) => createOwnershipTransfer({ data: input }),
     onSuccess: () => {
-      toast.success("Ownership invitation created. The recipient must sign in with that email and accept it.");
+      toast.success("In-app ownership invitation recorded. The recipient must sign in with that email and accept it; outbound email delivery is not connected yet.");
       qc.invalidateQueries({ queryKey: ["ownership-transfers"] });
     },
     onError: (error: Error) => toast.error(error.message),
@@ -33,7 +33,7 @@ function OwnershipPage() {
 
   return (
     <div>
-      <PageHeader title="Company ownership" subtitle="Ownership is separate from Company Admin privileges. Accepting ownership does not automatically grant operational access." />
+      <PageHeader title="Company ownership" subtitle="Ownership is separate from Company Admin privileges. Accepting ownership does not automatically grant operational access. Invitations appear in Nextrel when the recipient signs in; outbound email delivery is not connected yet." />
       <div className="space-y-6 px-4 pb-10 md:px-6">
         <section className="space-y-3">
           <h2 className="text-sm font-semibold">Ownership invitations and history</h2>
