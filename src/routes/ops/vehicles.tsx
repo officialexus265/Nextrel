@@ -23,10 +23,10 @@ function VehiclesPage() {
   const [model, setModel] = useState("");
   const [companyId, setCompanyId] = useState("");
   const [search, setSearch] = useState("");
-  const normalizedSearch = search.toLowerCase().replace(/[\\s-]/g, "");
+  const normalizedSearch = search.toLowerCase().replace(/[\s-]/g, "");
   const filteredVehicles = (q.data ?? []).filter((v) =>
     [v.plate, v.name, v.imei ?? "", v.make ?? "", v.model ?? ""].some((value) =>
-      value.toLowerCase().replace(/[\\s-]/g, "").includes(normalizedSearch),
+      value.toLowerCase().replace(/[\s-]/g, "").includes(normalizedSearch),
     ),
   );
   const remove = useMutation({
