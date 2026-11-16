@@ -1019,7 +1019,7 @@ export const listCompanies = createServerFn({ method: "GET" })
 
 export const createCompany = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
-  .validator(z.object({ id: z.string().optional(), name: z.string().min(2), city: z.string().optional(), speedLimit: z.number().optional() }))
+  .validator(z.object({ id: z.string().optional(), name: z.string().min(2), city: z.string().optional(), speedLimit: z.number().optional(), ownerEmail: z.string().email().optional().or(z.literal("")) }))
   .handler(async ({ context, data }) => {
     const { sql, session } = await ctx(context.userId);
     if (session.realRole !== "super_admin") throw new Error("Forbidden");
@@ -1038,6 +1038,13 @@ export const createCompany = createServerFn({ method: "POST" })
       values (${id}, ${data.name}, ${slug}, 'active', 'trial', ${data.speedLimit ?? 80}, ${data.city ?? null}, ${session.userId}, ${mark})
     `;
     await sql`insert into audit_logs (id, company_id, actor_id, action, target) values (${nid("aud")}, ${id}, ${session.userId}, 'company.created', ${data.name})`;
+    if (data.ownerEmail?.trim()) {
+      const email = data.ownerEmail.trim().toLowerCase();
+      const transferId = nid("own");
+      await sql`insert into company_ownership_transfers (id, company_id, from_owner_user_id, to_email, created_by, status, expires_at)
+        values (${transferId}, ${id}, null, ${email}, ${session.userId}, 'pending', now() + interval '14 days')`;
+      await sql`insert into audit_logs (id, company_id, actor_id, action, target) values (${nid("aud")}, ${id}, ${session.userId}, 'company.ownership_invited', ${email})`;
+    }
     return { id };
   });
 export const setCompanyStatus = createServerFn({ method: "POST" })
@@ -2370,6 +2377,131 @@ export const listAudit = createServerFn({ method: "GET" })
           createdAt: toIso(r.created_at),
         }),
       );
+  });
+
+export const listPendingRegistrations = createServerFn({ method: "GET" })
+  .middleware([authMiddleware])
+  .handler(async ({ context }) => {
+    const { sql, session } = await ctx(context.userId);
+    if (session.realRole !== "super_admin") throw new Error("Forbidden");
+    return sql<{
+      user_id: string; name: string | null; email: string | null; created_at: string;
+      approval_status: string; company_id: string | null;
+    }>`select user_id, name, email, created_at, approval_status, company_id
+      from profiles where approval_status = 'pending' order by created_at asc`;
+  });
+
+export const approveRegistration = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator(z.object({
+    userId: z.string().min(1),
+    role: z.enum(["company_admin", "tracker", "accounts", "field_admin"]),
+    companyId: z.string().nullable(),
+  }))
+  .handler(async ({ context, data }) => {
+    const { sql, session } = await ctx(context.userId);
+    if (session.realRole !== "super_admin") throw new Error("Only the System Owner can approve registrations");
+    const target = (await sql<{ email: string | null; role: string; approval_status: string }>`
+      select email, role, approval_status from profiles where user_id = ${data.userId} for update
+    `)[0];
+    if (!target || target.approval_status !== "pending") throw new Error("Registration is no longer pending");
+    if (["company_admin", "tracker", "accounts"].includes(data.role) && !data.companyId) throw new Error("Select a company for this role");
+    if (data.companyId) {
+      const company = (await sql<{ id: string }>`select id from companies where id = ${data.companyId}`)[0];
+      if (!company) throw new Error("Company not found");
+    }
+    await sql`update profiles set role = ${data.role}, company_id = ${data.companyId},
+      active = true, approval_status = 'approved', approved_by = ${session.userId},
+      approved_at = now(), rejection_reason = null where user_id = ${data.userId}`;
+    if (data.role === "field_admin") {
+      if (data.companyId) await sql`insert into field_assignments (user_id, company_id) values (${data.userId}, ${data.companyId}) on conflict do nothing`;
+      else await sql`insert into field_assignments (user_id, company_id) select ${data.userId}, id from companies on conflict do nothing`;
+    } else {
+      await sql`delete from field_assignments where user_id = ${data.userId}`;
+    }
+    await sql`insert into audit_logs (id, company_id, actor_id, action, target, meta)
+      values (${nid("aud")}, ${data.companyId}, ${session.userId}, 'registration.approved',
+      ${target.email ?? data.userId}, ${JSON.stringify({ role: data.role })}::jsonb)`;
+    return { ok: true };
+  });
+
+export const rejectRegistration = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator(z.object({ userId: z.string().min(1), reason: z.string().max(500).optional() }))
+  .handler(async ({ context, data }) => {
+    const { sql, session } = await ctx(context.userId);
+    if (session.realRole !== "super_admin") throw new Error("Only the System Owner can reject registrations");
+    const target = (await sql<{ email: string | null; approval_status: string }>`
+      select email, approval_status from profiles where user_id = ${data.userId} for update
+    `)[0];
+    if (!target || target.approval_status !== "pending") throw new Error("Registration is no longer pending");
+    await sql`update profiles set approval_status = 'rejected', rejection_reason = ${data.reason?.trim() || null} where user_id = ${data.userId}`;
+    await sql`insert into audit_logs (id, actor_id, action, target, meta)
+      values (${nid("aud")}, ${session.userId}, 'registration.rejected', ${target.email ?? data.userId},
+      ${JSON.stringify({ reason: data.reason?.trim() || null })}::jsonb)`;
+    return { ok: true };
+  });
+
+export const listOwnershipTransfers = createServerFn({ method: "GET" })
+  .middleware([authMiddleware])
+  .handler(async ({ context }) => {
+    const { sql, session } = await ctx(context.userId);
+    if (!session.email) return [];
+    return sql<{
+      id: string; company_id: string; company_name: string; to_email: string;
+      status: string; created_at: string; expires_at: string; direction: string;
+    }>`select t.id, t.company_id, c.name as company_name, t.to_email, t.status,
+      t.created_at, t.expires_at,
+      case when t.to_email = lower(${session.email}) then 'incoming' else 'outgoing' end as direction
+      from company_ownership_transfers t join companies c on c.id = t.company_id
+      where (${session.realRole === "super_admin"} or c.owner_user_id = ${session.userId}
+        or t.to_email = lower(${session.email}))
+      order by t.created_at desc`;
+  });
+
+export const createOwnershipTransfer = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator(z.object({ companyId: z.string(), email: z.string().email() }))
+  .handler(async ({ context, data }) => {
+    const { sql, session } = await ctx(context.userId);
+    const company = (await sql<{ name: string; owner_user_id: string | null }>`
+      select name, owner_user_id from companies where id = ${data.companyId}
+    `)[0];
+    if (!company) throw new Error("Company not found");
+    if (session.realRole !== "super_admin" && company.owner_user_id !== session.userId) throw new Error("Only the System Owner or current Company Owner can transfer ownership");
+    const email = data.email.trim().toLowerCase();
+    if (session.email?.toLowerCase() === email) throw new Error("The new owner must be a different account");
+    const existing = (await sql<{ id: string }>`select id from company_ownership_transfers where company_id = ${data.companyId} and status = 'pending' limit 1`)[0];
+    if (existing) throw new Error("This company already has a pending ownership invitation");
+    const id = nid("own");
+    await sql`insert into company_ownership_transfers (id, company_id, from_owner_user_id, to_email, created_by, status, expires_at)
+      values (${id}, ${data.companyId}, ${company.owner_user_id}, ${email}, ${session.userId}, 'pending', now() + interval '14 days')`;
+    await sql`insert into audit_logs (id, company_id, actor_id, action, target)
+      values (${nid("aud")}, ${data.companyId}, ${session.userId}, 'company.ownership_transfer_started', ${email})`;
+    return { id };
+  });
+
+export const acceptOwnershipTransfer = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator(z.object({ transferId: z.string() }))
+  .handler(async ({ context, data }) => {
+    const { sql, session } = await ctx(context.userId);
+    if (!session.email) throw new Error("A verified email address is required");
+    const transfer = (await sql<{ company_id: string; to_email: string; status: string; expires_at: string }>`
+      select company_id, to_email, status, expires_at from company_ownership_transfers
+      where id = ${data.transferId} for update
+    `)[0];
+    if (!transfer || transfer.status !== "pending") throw new Error("Ownership invitation is no longer available");
+    if (transfer.to_email.toLowerCase() !== session.email.toLowerCase()) throw new Error("This invitation belongs to a different email address");
+    if (new Date(transfer.expires_at).getTime() <= Date.now()) {
+      await sql`update company_ownership_transfers set status = 'expired' where id = ${data.transferId}`;
+      throw new Error("Ownership invitation has expired");
+    }
+    await sql`update companies set owner_user_id = ${session.userId} where id = ${transfer.company_id}`;
+    await sql`update company_ownership_transfers set status = 'accepted', accepted_at = now() where id = ${data.transferId}`;
+    await sql`insert into audit_logs (id, company_id, actor_id, action, target)
+      values (${nid("aud")}, ${transfer.company_id}, ${session.userId}, 'company.ownership_accepted', ${session.email})`;
+    return { ok: true, companyId: transfer.company_id };
   });
 
 export const listTeam = createServerFn({ method: "GET" })
