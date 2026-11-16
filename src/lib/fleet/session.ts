@@ -25,7 +25,7 @@ export async function bootstrapSession(sql: Sql, userId: string): Promise<Sessio
 
   let profile = (
     await sql<{ role: string; company_id: string | null; name: string | null; email: string | null; active: boolean }>`
-      select role, company_id, name, email, active from profiles where user_id = ${userId}
+      select role, company_id, name, email, active, approval_status from profiles where user_id = ${userId}
     `
   )[0];
 
@@ -41,10 +41,11 @@ export async function bootstrapSession(sql: Sql, userId: string): Promise<Sessio
         )[0]
       : undefined;
     const role: Role = invite ? asRole(invite.role) : superCount[0]?.n ? "pending" : "super_admin";
+    const approvalStatus = role === "pending" ? "pending" : "approved";
     const companyId = invite?.company_id ?? null;
     await sql`
-      insert into profiles (user_id, role, company_id, name, email)
-      values (${userId}, ${role}, ${companyId}, ${auth.name}, ${auth.email})
+      insert into profiles (user_id, role, company_id, name, email, approval_status)
+      values (${userId}, ${role}, ${companyId}, ${auth.name}, ${auth.email}, ${approvalStatus})
       on conflict (user_id) do nothing
     `;
     if (role === "super_admin") {
@@ -64,7 +65,7 @@ export async function bootstrapSession(sql: Sql, userId: string): Promise<Sessio
       insert into audit_logs (id, company_id, actor_id, action, target)
       values (${nid("aud")}, ${companyId}, ${userId}, 'user.joined', ${role})
     `;
-    profile = { role, company_id: companyId, name: auth.name, email: auth.email, active: true };
+    profile = { role, company_id: companyId, name: auth.name, email: auth.email, active: true, approval_status: approvalStatus };
   }
 
   if (profile.role === "super_admin") {
@@ -78,6 +79,7 @@ export async function bootstrapSession(sql: Sql, userId: string): Promise<Sessio
   )[0];
 
   const realRole = asRole(profile.role);
+  const ownerRow = await sql<{ id: string }>`select id from companies where owner_user_id = ${userId} limit 1`;
   const role = override ? asRole(override.role) : realRole;
   const companyId = override ? override.company_id : profile.company_id;
   let companyName: string | null = null;
@@ -104,6 +106,8 @@ export async function bootstrapSession(sql: Sql, userId: string): Promise<Sessio
     companyName,
     companyMark,
     impersonating: Boolean(override),
+    approvalStatus: profile.approval_status ?? (realRole === "pending" ? "pending" : "approved"),
+    isCompanyOwner: ownerRow.length > 0,
   };
 }
 
