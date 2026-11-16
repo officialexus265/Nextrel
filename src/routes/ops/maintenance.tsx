@@ -140,7 +140,7 @@ function MaintenancePage() {
               <div className="min-w-0">
                 <div className="font-medium">{m.title}</div>
                 <p className="text-sm text-muted">
-                  {m.vehicleName}
+                  {m.vehicleName} · {m.plate}
                   {m.dueOdometer != null ? ` · due ${Math.round(m.dueOdometer).toLocaleString()} km` : ""}
                   {m.dueDate ? ` · ${String(m.dueDate).slice(0, 10)}` : ""}
                 </p>

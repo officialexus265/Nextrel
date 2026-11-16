@@ -101,6 +101,7 @@ export type LivePulse = {
   severity: AlertSeverity;
   vehicleId: string | null;
   vehicleName: string | null;
+  plate: string | null;
   createdAt: string;
 };
 
@@ -111,6 +112,7 @@ export type BehaviorChip = {
   severity: AlertSeverity;
   vehicleId: string;
   vehicleName: string;
+  plate: string;
   ts: string;
 };
 
@@ -189,6 +191,7 @@ export type DeviceRow = {
   companyName: string | null;
   vehicleId: string | null;
   vehicleName: string | null;
+  plate: string | null;
   imei: string;
   manufacturer: string | null;
   model: string | null;
@@ -245,6 +248,7 @@ export type MediaRow = {
   id: string;
   vehicleId: string;
   vehicleName: string;
+  plate: string;
   kind: string;
   path: string;
   caption: string | null;
@@ -270,6 +274,7 @@ export type MaintenanceRow = {
   id: string;
   vehicleId: string;
   vehicleName: string;
+  plate: string;
   title: string;
   dueOdometer: number | null;
   dueHours: number | null;

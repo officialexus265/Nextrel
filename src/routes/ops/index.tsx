@@ -88,7 +88,7 @@ function LiveOps() {
             className="shrink-0 rounded-full border border-border bg-surface-2 px-2.5 py-1 text-fg"
           >
             <PulseDot severity={a.severity} />
-            {a.title}
+            {a.title} · {a.plate}{a.plate ? ` · ${a.plate}` : ""}
           </button>
         ))}
         {signals.map((a) => (

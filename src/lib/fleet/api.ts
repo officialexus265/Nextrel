@@ -292,10 +292,11 @@ export const getLiveFleet = createServerFn({ method: "GET" })
       severity: string;
       vehicle_id: string | null;
       vehicle_name: string | null;
+      plate: string | null;
       created_at: string;
       company_id: string;
     }>`
-      select a.id, a.title, a.severity, a.vehicle_id, v.name as vehicle_name, a.created_at, a.company_id
+      select a.id, a.title, a.severity, a.vehicle_id, v.name as vehicle_name, v.plate, a.created_at, a.company_id
       from alerts a
       left join vehicles v on v.id = a.vehicle_id
       where a.status = 'open'
@@ -327,6 +328,7 @@ export const getLiveFleet = createServerFn({ method: "GET" })
         severity: a.severity as LivePulse["severity"],
         vehicleId: a.vehicle_id,
         vehicleName: a.vehicle_name,
+        plate: a.plate,
         createdAt: toIso(a.created_at),
       }));
 
@@ -336,10 +338,11 @@ export const getLiveFleet = createServerFn({ method: "GET" })
       severity: string;
       vehicle_id: string;
       vehicle_name: string;
+      plate: string;
       ts: string;
       company_id: string;
     }>`
-      select b.id, b.kind, b.severity, b.vehicle_id, v.name as vehicle_name, b.ts, b.company_id
+      select b.id, b.kind, b.severity, b.vehicle_id, v.name as vehicle_name, v.plate, b.ts, b.company_id
       from behavior_events b
       join vehicles v on v.id = b.vehicle_id
       where b.ts > now() - interval '12 hours'
@@ -356,6 +359,7 @@ export const getLiveFleet = createServerFn({ method: "GET" })
         severity: b.severity as BehaviorChip["severity"],
         vehicleId: b.vehicle_id,
         vehicleName: b.vehicle_name,
+        plate: b.plate,
         ts: toIso(b.ts),
       }));
 
@@ -1157,6 +1161,7 @@ export const listDevices = createServerFn({ method: "GET" })
       company_name: string | null;
       vehicle_id: string | null;
       vehicle_name: string | null;
+      plate: string | null;
       imei: string;
       manufacturer: string | null;
       model: string | null;
@@ -1174,7 +1179,7 @@ export const listDevices = createServerFn({ method: "GET" })
       last_status: string | null;
       cal_count: number | null;
     }>`
-      select d.id, d.company_id, c.name as company_name, d.vehicle_id, v.name as vehicle_name,
+      select d.id, d.company_id, c.name as company_name, d.vehicle_id, v.name as vehicle_name, v.plate,
         d.imei, d.manufacturer, d.model, d.protocol, d.decoder, d.capabilities,
         d.capability_source, d.capabilities_verified_at, d.connection_mode,
         d.last_seen, d.gsm_signal, d.gps_signal, d.battery,
@@ -1195,7 +1200,7 @@ export const listDevices = createServerFn({ method: "GET" })
           : [];
         return {
           id: r.id, companyId: r.company_id, companyName: r.company_name,
-          vehicleId: r.vehicle_id, vehicleName: r.vehicle_name, imei: r.imei,
+          vehicleId: r.vehicle_id, vehicleName: r.vehicle_name, plate: r.plate, imei: r.imei,
           manufacturer: r.manufacturer, model: r.model, protocol: r.protocol, decoder: r.decoder,
           capabilities, capabilitySource: r.capability_source as DeviceRow["capabilitySource"],
           capabilitiesVerifiedAt: r.capabilities_verified_at ? toIso(r.capabilities_verified_at) : null,
@@ -2192,6 +2197,7 @@ export const listMaintenance = createServerFn({ method: "GET" })
       id: string;
       vehicle_id: string;
       vehicle_name: string;
+      plate: string;
       title: string;
       due_odometer: number | null;
       due_hours: number | null;
@@ -2202,7 +2208,7 @@ export const listMaintenance = createServerFn({ method: "GET" })
       odometer_km: number;
       engine_hours: number;
     }>`
-      select m.id, m.vehicle_id, v.name as vehicle_name, m.title, m.due_odometer, m.due_hours, m.due_date,
+      select m.id, m.vehicle_id, v.name as vehicle_name, v.plate, m.title, m.due_odometer, m.due_hours, m.due_date,
         m.status, m.notes, m.company_id, v.odometer_km, v.engine_hours
       from maintenance_reminders m join vehicles v on v.id = m.vehicle_id
       order by m.status desc, m.due_date asc nulls last
@@ -2214,6 +2220,7 @@ export const listMaintenance = createServerFn({ method: "GET" })
           id: r.id,
           vehicleId: r.vehicle_id,
           vehicleName: r.vehicle_name,
+          plate: r.plate,
           title: r.title,
           dueOdometer: r.due_odometer,
           dueHours: r.due_hours,
@@ -2290,6 +2297,7 @@ export const listMedia = createServerFn({ method: "GET" })
       id: string;
       vehicle_id: string;
       vehicle_name: string;
+      plate: string;
       kind: string;
       path: string;
       caption: string | null;
@@ -2297,7 +2305,7 @@ export const listMedia = createServerFn({ method: "GET" })
       ts: string;
       company_id: string;
     }>`
-      select m.id, m.vehicle_id, v.name as vehicle_name, m.kind, m.path, m.caption, m.event_type, m.ts, m.company_id
+      select m.id, m.vehicle_id, v.name as vehicle_name, v.plate, m.kind, m.path, m.caption, m.event_type, m.ts, m.company_id
       from media_files m join vehicles v on v.id = m.vehicle_id
       order by m.ts desc
     `;
@@ -2308,6 +2316,7 @@ export const listMedia = createServerFn({ method: "GET" })
           id: r.id,
           vehicleId: r.vehicle_id,
           vehicleName: r.vehicle_name,
+          plate: r.plate,
           kind: r.kind,
           path: r.path,
           caption: r.caption,

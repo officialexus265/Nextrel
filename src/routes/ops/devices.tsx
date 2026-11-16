@@ -179,7 +179,7 @@ function DevicesPage() {
                   </div>
                   {d.capabilities.length > 0 && d.capabilitySource === "manual" && <span className="mt-1 block text-[10px] text-subtle">Manually verified</span>}
                 </td>
-                <td className="px-2 py-2">{d.vehicleName ?? "—"}</td>
+                <td className="px-2 py-2">{d.vehicleName ? <><span>{d.vehicleName}</span><span className="ml-1 font-mono text-xs text-muted">· {d.plate ?? "No plate"}</span></> : "—"}</td>
                 <td className="px-2 py-2 text-muted">{d.companyName ?? "—"}</td>
                 <td className="px-2 py-2 text-muted">{d.lastSeen ? new Date(d.lastSeen).toLocaleString() : "Never"}</td>
                 <td className="tabular px-2 py-2">{d.gsmSignal ?? "—"}</td>
