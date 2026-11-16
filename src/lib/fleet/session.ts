@@ -40,7 +40,7 @@ export async function bootstrapSession(sql: Sql, userId: string): Promise<Sessio
           `
         )[0]
       : undefined;
-    const role: Role = invite ? asRole(invite.role) : superCount[0]?.n ? "pending" : "super_admin";
+    const role: Role = superCount[0]?.n ? "pending" : "super_admin";
     const approvalStatus = role === "pending" ? "pending" : "approved";
     const companyId = invite?.company_id ?? null;
     await sql`
