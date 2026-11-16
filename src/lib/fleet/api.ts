@@ -2689,8 +2689,9 @@ export const getFleetBrief = createServerFn({ method: "POST" })
       expires_on: string | null;
       company_id: string;
       vehicle_name: string | null;
+      plate: string | null;
     }>`
-      select d.id, d.title, d.kind, d.expires_on, d.company_id, v.name as vehicle_name
+      select d.id, d.title, d.kind, d.expires_on, d.company_id, v.name as vehicle_name, v.plate
       from documents d
       left join vehicles v on v.id = d.vehicle_id
       where d.expires_on is not null
@@ -2780,6 +2781,7 @@ export const getFleetBrief = createServerFn({ method: "POST" })
         title: d.title,
         kind: d.kind,
         vehicleName: d.vehicle_name,
+        plate: d.plate,
         expiresOn: String(d.expires_on).slice(0, 10),
       }));
 

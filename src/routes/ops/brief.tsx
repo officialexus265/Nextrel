@@ -190,7 +190,7 @@ function BriefPage() {
                 <li key={d.id} className="flex items-start justify-between gap-3 text-sm">
                   <div>
                     <div>{d.title}</div>
-                    <div className="text-xs text-muted">{d.vehicleName ?? "Fleet"} · {d.kind}</div>
+                    <div className="text-xs text-muted">{d.vehicleName ?? "Fleet"}{d.plate ? ` · ${d.plate}` : ""} · {d.kind}</div>
                   </div>
                   <Badge tone={soon ? "idle" : "muted"}>{d.expiresOn}</Badge>
                 </li>

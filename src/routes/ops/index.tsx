@@ -88,7 +88,7 @@ function LiveOps() {
             className="shrink-0 rounded-full border border-border bg-surface-2 px-2.5 py-1 text-fg"
           >
             <PulseDot severity={a.severity} />
-            {a.title} · {a.plate}{a.plate ? ` · ${a.plate}` : ""}
+            {a.title}{a.plate ? ` · ${a.plate}` : ""}
           </button>
         ))}
         {signals.map((a) => (
@@ -99,7 +99,7 @@ function LiveOps() {
             className="shrink-0 rounded-full border border-border bg-surface-2 px-2.5 py-1 text-fg transition-colors hover:border-border-strong hover:bg-surface-3"
           >
             <PulseDot severity={a.severity} />
-            {a.title}
+            {a.title} · {a.plate}
           </button>
         ))}
         {!pulse.length && !signals.length && <span className="text-subtle">No new activity to report.</span>}
