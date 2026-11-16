@@ -1013,7 +1013,11 @@ export const listCompanies = createServerFn({ method: "GET" })
         mark: c.mark,
       });
     }
-    const scope = await companyScope(sql, session);
+    let scope = await companyScope(sql, session);
+    if (session.isCompanyOwner && scope !== null) {
+      const owned = await sql<{ id: string }>`select id from companies where owner_user_id = ${session.userId}`;
+      scope = [...new Set([...scope, ...owned.map((row) => row.id)])];
+    }
     return scope ? out.filter((c) => scope.includes(c.id)) : out;
   });
 
@@ -2528,7 +2532,11 @@ export const listTeam = createServerFn({ method: "GET" })
       company_id: string | null;
       created_at: string;
     }>`select id, email, role, company_id, created_at from invites order by created_at desc`;
-    const scope = await companyScope(sql, session);
+    let scope = await companyScope(sql, session);
+    if (session.isCompanyOwner && scope !== null) {
+      const owned = await sql<{ id: string }>`select id from companies where owner_user_id = ${session.userId}`;
+      scope = [...new Set([...scope, ...owned.map((row) => row.id)])];
+    }
     return {
       profiles: rows.filter((r) => session.role === "super_admin" || inScope(scope, r.company_id) || r.user_id === session.userId),
       invites: invites.filter((r) => session.role === "super_admin" || inScope(scope, r.company_id)),
@@ -2577,7 +2585,11 @@ export const revokeInvite = createServerFn({ method: "POST" })
   .handler(async ({ context, data }) => {
     const { sql, session } = await ctx(context.userId);
     const row = (await sql<{ id: string; email: string; company_id: string | null }>`select id, email, company_id from invites where id = ${data.id}`)[0];
-    const scope = await companyScope(sql, session);
+    let scope = await companyScope(sql, session);
+    if (session.isCompanyOwner && scope !== null) {
+      const owned = await sql<{ id: string }>`select id from companies where owner_user_id = ${session.userId}`;
+      scope = [...new Set([...scope, ...owned.map((item) => item.id)])];
+    }
     if (!row || (session.realRole !== "super_admin" && !inScope(scope, row.company_id))) throw new Error("Invite not found");
     if (session.realRole !== "super_admin" && session.role !== "company_admin") throw new Error("Forbidden");
     await sql`delete from invites where id = ${data.id}`;
