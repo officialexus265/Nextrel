@@ -51,9 +51,14 @@ function VehicleFile() {
     refetchInterval: 12_000,
   });
   const log = useMutation({
-    mutationFn: () => editingFuelId
-      ? updateFuelEvent({ data: { id: editingFuelId, kind, litres: Number(litres), notes } })
-      : logFuel({ data: { vehicleId, kind, litres: Number(litres), notes } }),
+    mutationFn: async () => {
+      if (editingFuelId) {
+        await updateFuelEvent({ data: { id: editingFuelId, kind, litres: Number(litres), notes } });
+      } else {
+        await logFuel({ data: { vehicleId, kind, litres: Number(litres), notes } });
+      }
+      return { ok: true };
+    },
     onSuccess: () => {
       toast.success(editingFuelId ? "Fuel entry updated" : "Fuel entry logged");
       setFuelOpen(false);
@@ -497,7 +502,7 @@ function VehicleFile() {
                         <>
                           <Button size="sm" variant="secondary" onClick={() => {
                             setEditingFuelId(f.id);
-                            setKind(f.kind);
+                            setKind(f.kind as "fill" | "drop");
                             setLitres(String(f.litres));
                             setNotes(f.notes ?? "");
                             setFuelOpen(true);
