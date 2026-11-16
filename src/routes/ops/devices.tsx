@@ -38,11 +38,11 @@ function DevicesPage() {
   const [deviceSearch, setDeviceSearch] = useState("");
   const selectedCompanyId = companyId || companies.data?.[0]?.id || "";
   const formVehicles = (vehicles.data ?? []).filter((v) => v.company_id === selectedCompanyId);
-  const normalizedDeviceSearch = deviceSearch.toLowerCase().replace(/[\s-]/g, "");
+  const normalizedDeviceSearch = deviceSearch.toLowerCase().replace(/[\\s-]/g, "");
   const filteredDevices = (q.data ?? []).filter((d) => {
     if (!normalizedDeviceSearch) return true;
     const values = [d.imei, d.vehicleName ?? "", d.plate ?? ""];
-    return values.some((value) => value.toLowerCase().replace(/[\s-]/g, "").includes(normalizedDeviceSearch));
+    return values.some((value) => value.toLowerCase().replace(/[\\s-]/g, "").includes(normalizedDeviceSearch));
   });
 
   const mut = useMutation({

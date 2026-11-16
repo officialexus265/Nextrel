@@ -1192,7 +1192,7 @@ export const listDevices = createServerFn({ method: "GET" })
       order by d.imei
     `;
     return rows
-      .filter((r) => session.role === "super_admin" || inScope(scope, r.company_id))
+      .filter((r) => inScope(scope, r.company_id))
       .map((r): DeviceRow => {
         const rawCapabilities = typeof r.capabilities === "string" ? JSON.parse(r.capabilities) as unknown : r.capabilities;
         const capabilities = Array.isArray(rawCapabilities)
