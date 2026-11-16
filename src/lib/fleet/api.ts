@@ -1608,14 +1608,21 @@ export const getPlayback = createServerFn({ method: "POST" })
       id: string;
       type: string;
       title: string | null;
+      litres: number;
       ts: string;
       lat: number | null;
       lng: number | null;
     }>`
-      select id, kind as type, notes as title, ts, lat, lng from fuel_events
+      select id, kind as type, notes as title, litres, ts, lat, lng from fuel_events
       where vehicle_id = ${data.vehicleId} and ts >= ${data.from} and ts <= ${data.to}
       order by ts
     `;
+    const fuelSummary = (await sql<{ fuel_used: number | null; recorded_count: number }>`
+      select sum(fuel_used) as fuel_used, count(fuel_used)::int as recorded_count
+      from trips
+      where vehicle_id = ${data.vehicleId}
+        and started_at >= ${data.from} and ended_at is not null and ended_at <= ${data.to}
+    `)[0];
     const stops = await sql<{
       id: string;
       title: string | null;
@@ -1638,6 +1645,7 @@ export const getPlayback = createServerFn({ method: "POST" })
         ts: toIso(e.ts),
         lat: e.lat,
         lng: e.lng,
+        litres: Number(e.litres),
       })),
       ...stops.map((e) => ({
         id: e.id,
@@ -1671,7 +1679,12 @@ export const getPlayback = createServerFn({ method: "POST" })
         lng: e.lng,
       })),
     ];
-    return { vehicle: veh, points, events };
+    return {
+      vehicle: veh,
+      points,
+      events,
+      fuelUsed: Number(fuelSummary?.recorded_count ?? 0) > 0 ? Number(fuelSummary?.fuel_used ?? 0) : null,
+    };
   });
 
 export const getReports = createServerFn({ method: "POST" })

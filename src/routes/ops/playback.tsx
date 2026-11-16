@@ -7,6 +7,7 @@ import { PlaybackMap, type PlaybackEvent } from "@/components/map/playback-map";
 import { PageHeader } from "@/components/layout/app-shell";
 import { Button } from "@/components/ui/button";
 import { formatSpeed } from "@/lib/utils";
+import { routeLength } from "@/lib/fleet/geo";
 
 export const Route = createFileRoute("/ops/playback")({ component: PlaybackPage });
 
@@ -23,6 +24,16 @@ function PlaybackPage() {
   const points = play.data?.points ?? [];
   const events = (play.data?.events ?? []) as PlaybackEvent[];
   const markers = events.filter((e) => e.kind !== "stop");
+  const distanceKm = points.length > 1
+    ? routeLength(points.map((p) => ({ lat: p.lat, lng: p.lng }))) / 1000
+    : 0;
+  const maxSpeed = points.reduce((max, point) => Math.max(max, Number(point.speed) || 0), 0);
+  const averageSpeed = points.length
+    ? points.reduce((sum, point) => sum + (Number(point.speed) || 0), 0) / points.length
+    : 0;
+  const fuelEvents = events.filter((event) => event.kind === "fuel");
+  const fuelFilled = fuelEvents.filter((event) => event.type === "fill").reduce((sum, event) => sum + (event.litres ?? 0), 0);
+  const fuelDropped = fuelEvents.filter((event) => event.type === "drop").reduce((sum, event) => sum + (event.litres ?? 0), 0);
   const [index, setIndex] = useState(0);
   const [running, setRunning] = useState(false);
   const [rate, setRate] = useState(4);
@@ -76,6 +87,19 @@ function PlaybackPage() {
           </span>
         )}
       </div>
+      {points.length > 0 && (
+        <div className="grid grid-cols-2 gap-2 px-4 pt-3 md:grid-cols-4 md:px-6">
+          <PlaybackMetric label="GPS route distance" value={`${distanceKm.toFixed(2)} km`} />
+          <PlaybackMetric label="Maximum speed" value={formatSpeed(maxSpeed)} />
+          <PlaybackMetric label="Average recorded speed" value={formatSpeed(averageSpeed)} />
+          <PlaybackMetric label="Fuel used" value={play.data?.fuelUsed == null ? "Not recorded" : `${play.data.fuelUsed.toFixed(1)} L`} />
+          {fuelEvents.length > 0 && (
+            <div className="col-span-2 text-xs text-muted md:col-span-4">
+              Logged fuel events: {fuelFilled.toFixed(1)} L filled · {fuelDropped.toFixed(1)} L recorded as drops. These are event logs, not fuel-consumption totals.
+            </div>
+          )}
+        </div>
+      )}
       <div className="min-h-0 flex-1 p-4 md:px-6">
         <div className="h-full overflow-hidden rounded-[var(--radius-lg)] border border-border">
           {points.length > 0 ? (
@@ -113,6 +137,15 @@ function PlaybackPage() {
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+function PlaybackMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-[var(--radius-md)] border border-border bg-surface px-3 py-2">
+      <div className="text-[11px] text-muted">{label}</div>
+      <div className="mt-1 text-sm font-semibold tabular">{value}</div>
     </div>
   );
 }
