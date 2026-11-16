@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { useMemo, useState, useRef } from "react";
 import { Activity, Bell, CircleStop, Crosshair, Fuel, Gauge, MapPin, Navigation, PauseCircle, Radio, RefreshCw, Search, Truck, WifiOff, X } from "lucide-react";
 import { getLiveFleet } from "@/lib/fleet/api";
 import { LiveMap } from "@/components/map/live-map";
@@ -18,6 +18,7 @@ function LiveOps() {
     refetchInterval: 4000,
   });
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [contextMenuId, setContextMenuId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<"all" | LiveVehicle["movement"]>("all");
   const [follow, setFollow] = useState(true);
@@ -29,6 +30,11 @@ function LiveOps() {
   const pulse = q.data?.pulse ?? [];
   const signals = q.data?.signals ?? [];
   const selected = vehicles.find((v) => v.id === selectedId) ?? null;
+  const contextVehicle = vehicles.find((v) => v.id === contextMenuId) ?? null;
+  const openVehicleActions = (id: string) => {
+    setSelectedId(id);
+    setContextMenuId(id);
+  };
 
   const filtered = useMemo(() => {
     return vehicles.filter((v) => {
@@ -109,10 +115,20 @@ function LiveOps() {
               fitNonce={fitNonce}
               mapCenter={q.data.mapCenter}
               onSelect={setSelectedId}
+              onContextMenu={openVehicleActions}
               className="h-full w-full"
             />
           ) : (
             <div className="grid h-full place-items-center text-muted">{q.isError ? "Map failed to load." : "Loading map…"}</div>
+          )}
+          {contextVehicle && (
+            <div className="absolute right-3 top-14 z-[900] w-48 rounded-[var(--radius-md)] border border-border bg-surface p-2 shadow-xl" role="menu" aria-label={`Actions for ${contextVehicle.plate}`}>
+              <div className="truncate px-2 pb-2 text-xs font-semibold text-muted">{contextVehicle.plate}</div>
+              <button type="button" role="menuitem" onClick={() => { setSelectedId(contextVehicle.id); setContextMenuId(null); }} className="flex h-9 w-full items-center rounded-[var(--radius-sm)] px-2 text-left text-sm hover:bg-surface-2">View / quick inspection</button>
+              <a role="menuitem" href={`/ops/playback?vehicleId=${encodeURIComponent(contextVehicle.id)}`} className="flex h-9 items-center rounded-[var(--radius-sm)] px-2 text-sm hover:bg-surface-2">Playback history</a>
+              <Link role="menuitem" to="/ops/vehicles/$vehicleId" params={{ vehicleId: contextVehicle.id }} onClick={() => setContextMenuId(null)} className="flex h-9 items-center rounded-[var(--radius-sm)] px-2 text-sm hover:bg-surface-2">Open unit file</Link>
+              <button type="button" onClick={() => setContextMenuId(null)} className="mt-1 flex h-8 w-full items-center justify-center rounded-[var(--radius-sm)] text-xs text-muted hover:bg-surface-2">Close</button>
+            </div>
           )}
           <div className="pointer-events-none absolute left-3 top-3 z-[500] flex flex-col gap-2">
             <div className="pointer-events-auto flex overflow-hidden rounded-[var(--radius-sm)] border border-border bg-surface/95 text-[11px] uppercase tracking-wide backdrop-blur">
@@ -141,15 +157,28 @@ function LiveOps() {
             </div>
           </div>
           {selected && (
-            <aside className="absolute inset-x-3 bottom-3 z-[500] max-h-[46%] overflow-auto rounded-[var(--radius-lg)] border border-border bg-surface/95 p-4 backdrop-blur md:inset-x-auto md:bottom-4 md:right-4 md:w-80">
+            <aside className="absolute inset-x-3 bottom-3 z-[500] max-h-[72%] overflow-auto rounded-[var(--radius-lg)] border border-border bg-surface/95 p-4 backdrop-blur md:inset-x-auto md:bottom-4 md:right-4 md:w-80">
               <div className="mb-3 flex items-start justify-between gap-2">
                 <div>
-                  <div className="text-sm font-semibold">{selected.name}</div>
+                  <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-live">Quick inspection</div>
+                  <div className="mt-1 text-sm font-semibold">{selected.name}</div>
                   <div className="font-mono text-xs text-muted">{selected.plate}</div>
                 </div>
                 <button type="button" aria-label="Close vehicle details" className="rounded-[var(--radius-xs)] p-1 text-muted hover:bg-surface-2" onClick={() => setSelectedId(null)}>
                   <X className="size-4" />
                 </button>
+              </div>
+              <div className="mb-3 h-32 overflow-hidden rounded-[var(--radius-sm)] border border-border">
+                <LiveMap
+                  vehicles={[selected]}
+                  geofences={[]}
+                  selectedId={selected.id}
+                  follow={true}
+                  fitNonce={0}
+                  mapCenter={{ lat: selected.lat, lng: selected.lng, label: selected.plate }}
+                  onSelect={() => setSelectedId(selected.id)}
+                  className="h-full w-full"
+                />
               </div>
               <StatusChip movement={selected.movement} durationMs={selected.durationMs} />
               {selected.openAlerts > 0 && (
@@ -184,11 +213,11 @@ function LiveOps() {
         </section>
         <aside className="flex max-h-[440px] min-h-[320px] w-full shrink-0 flex-col overflow-hidden rounded-[var(--radius-lg)] border border-border bg-surface lg:hidden">
           <FleetFilters query={query} setQuery={setQuery} filter={filter} setFilter={setFilter} count={filtered.length} />
-          <FleetList vehicles={filtered} selectedId={selectedId} onSelect={setSelectedId} />
+          <FleetList vehicles={filtered} selectedId={selectedId} onSelect={setSelectedId} onContextMenu={openVehicleActions} />
         </aside>
         <aside className="hidden min-h-[520px] min-w-0 flex-col overflow-hidden rounded-[var(--radius-lg)] border border-border bg-surface lg:flex">
           <FleetFilters query={query} setQuery={setQuery} filter={filter} setFilter={setFilter} count={filtered.length} />
-          <FleetList vehicles={filtered} selectedId={selectedId} onSelect={setSelectedId} />
+          <FleetList vehicles={filtered} selectedId={selectedId} onSelect={setSelectedId} onContextMenu={openVehicleActions} />
         </aside>
       </div>
     </div>
@@ -264,18 +293,31 @@ function FleetList({
   vehicles,
   selectedId,
   onSelect,
+  onContextMenu,
 }: {
   vehicles: LiveVehicle[];
   selectedId: string | null;
   onSelect: (id: string) => void;
+  onContextMenu: (id: string) => void;
 }) {
+  const longPressTimer = useRef<number | null>(null);
+  const longPressTriggered = useRef(false);
+  const lastRightClick = useRef<{ id: string; at: number }>({ id: "", at: 0 });
+  const clearLongPress = () => {
+    if (longPressTimer.current !== null) window.clearTimeout(longPressTimer.current);
+    longPressTimer.current = null;
+  };
   return (
     <div className="min-h-0 flex-1 overflow-auto">
       {vehicles.map((v) => (
         <button
           key={v.id}
           type="button"
-          onClick={() => onSelect(v.id)}
+          onClick={() => { if (longPressTriggered.current) { longPressTriggered.current = false; return; } onSelect(v.id); }}
+          onTouchStart={() => { longPressTriggered.current = false; clearLongPress(); longPressTimer.current = window.setTimeout(() => { longPressTriggered.current = true; onContextMenu(v.id); }, 550); }}
+          onTouchEnd={clearLongPress}
+          onTouchMove={clearLongPress}
+          onContextMenu={(event) => { event.preventDefault(); const now = Date.now(); if (lastRightClick.current.id === v.id && now - lastRightClick.current.at < 500) onContextMenu(v.id); lastRightClick.current = { id: v.id, at: now }; }}
           className={cn(
             "flex w-full items-start gap-3 border-b border-border px-3 py-3 text-left hover:bg-surface-2",
             selectedId === v.id && "bg-surface-2",

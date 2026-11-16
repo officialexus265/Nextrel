@@ -12,7 +12,7 @@ export const Route = createFileRoute("/ops/playback")({ component: PlaybackPage 
 
 function PlaybackPage() {
   const vehicles = useQuery({ queryKey: ["vehicles"], queryFn: () => listVehicles() });
-  const [vehicleId, setVehicleId] = useState<string>("");
+  const [vehicleId, setVehicleId] = useState<string>(() => typeof window === "undefined" ? "" : new URLSearchParams(window.location.search).get("vehicleId") ?? "");
   const to = new Date();
   const from = new Date(to.getTime() - 8 * 3600_000);
   const play = useQuery({

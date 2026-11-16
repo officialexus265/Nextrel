@@ -10,10 +10,11 @@ type Props = {
   fitNonce: number;
   mapCenter: MapCenter;
   onSelect: (id: string) => void;
+  onContextMenu?: (id: string) => void;
   className?: string;
 };
 
-export function LiveMap({ vehicles, geofences, selectedId, follow, fitNonce, mapCenter, onSelect, className }: Props) {
+export function LiveMap({ vehicles, geofences, selectedId, follow, fitNonce, mapCenter, onSelect, onContextMenu, className }: Props) {
   const hostRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<import("leaflet").Map | null>(null);
   const markersRef = useRef<Map<string, import("leaflet").Marker>>(new Map());
@@ -21,7 +22,10 @@ export function LiveMap({ vehicles, geofences, selectedId, follow, fitNonce, map
   const trailRef = useRef<import("leaflet").Polyline | null>(null);
   const historyRef = useRef<Map<string, [number, number][]>>(new Map());
   const onSelectRef = useRef(onSelect);
+  const onContextMenuRef = useRef(onContextMenu);
+  const lastRightClickRef = useRef(0);
   onSelectRef.current = onSelect;
+  onContextMenuRef.current = onContextMenu;
   const [ready, setReady] = useState(false);
   const [baseMap, setBaseMap] = useState<"street" | "voyager" | "satellite">("street");
   const [mapPreferenceLoaded, setMapPreferenceLoaded] = useState(false);
@@ -176,6 +180,16 @@ export function LiveMap({ vehicles, geofences, selectedId, follow, fitNonce, map
         if (!marker) {
           marker = L.marker([v.lat, v.lng], { icon, zIndexOffset: 600 }).addTo(map);
           marker.on("click", () => onSelectRef.current(v.id));
+          marker.on("contextmenu", (event) => {
+            const original = event.originalEvent as MouseEvent;
+            if (original.button === 2) {
+              const now = Date.now();
+              if (now - lastRightClickRef.current < 500) onContextMenuRef.current?.(v.id);
+              lastRightClickRef.current = now;
+            } else {
+              onContextMenuRef.current?.(v.id);
+            }
+          });
           markersRef.current.set(v.id, marker);
         } else {
           marker.setLatLng([v.lat, v.lng]);
