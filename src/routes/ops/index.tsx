@@ -40,7 +40,7 @@ function LiveOps() {
     return vehicles.filter((v) => {
       if (filter !== "all" && v.movement !== filter) return false;
       if (!query) return true;
-      const normalize = (value: string) => value.toLowerCase().replace(/[\\s-]/g, "");
+      const normalize = (value: string) => value.toLowerCase().replace(/[\s-]/g, "");
       const hay = normalize(`${v.name} ${v.plate} ${v.driverName ?? ""} ${v.companyName} ${v.deviceImei ?? ""}`);
       return hay.includes(normalize(query));
     });
