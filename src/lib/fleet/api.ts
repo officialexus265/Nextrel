@@ -3630,7 +3630,7 @@ export const updateUserRole = createServerFn({ method: "POST" })
     const target = (await sql<{ role: string; email: string | null; company_id: string | null }>`select role, email, company_id from profiles where user_id = ${data.userId}`)[0];
     if (!target) throw new Error("User not found");
     if (target.role === "super_admin") throw new Error("Platform administrator roles are protected.");
-    await sql`update profiles set role = ${data.role} where user_id = ${data.userId}`;
+    await sql`update profiles set role = ${data.role}, approval_status = ${data.role === "pending" ? "pending" : "approved"}, approved_by = ${data.role === "pending" ? null : session.userId}, approved_at = ${data.role === "pending" ? null : new Date().toISOString()} where user_id = ${data.userId}`;
     if (data.role === "field_admin") {
       await sql`insert into field_assignments (user_id, company_id) select ${data.userId}, id from companies on conflict do nothing`;
     } else {
