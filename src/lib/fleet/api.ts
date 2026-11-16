@@ -2487,8 +2487,8 @@ export const acceptOwnershipTransfer = createServerFn({ method: "POST" })
   .handler(async ({ context, data }) => {
     const { sql, session } = await ctx(context.userId);
     if (!session.email) throw new Error("A verified email address is required");
-    const transfer = (await sql<{ company_id: string; to_email: string; status: string; expires_at: string }>`
-      select company_id, to_email, status, expires_at from company_ownership_transfers
+    const transfer = (await sql<{ company_id: string; from_owner_user_id: string | null; to_email: string; status: string; expires_at: string }>`
+      select company_id, from_owner_user_id, to_email, status, expires_at from company_ownership_transfers
       where id = ${data.transferId} for update
     `)[0];
     if (!transfer || transfer.status !== "pending") throw new Error("Ownership invitation is no longer available");
@@ -2497,7 +2497,9 @@ export const acceptOwnershipTransfer = createServerFn({ method: "POST" })
       await sql`update company_ownership_transfers set status = 'expired' where id = ${data.transferId}`;
       throw new Error("Ownership invitation has expired");
     }
-    await sql`update companies set owner_user_id = ${session.userId} where id = ${transfer.company_id}`;
+    const changed = await sql<{ id: string }>`update companies set owner_user_id = ${session.userId}
+      where id = ${transfer.company_id} and owner_user_id is not distinct from ${transfer.from_owner_user_id} returning id`;
+    if (!changed.length) throw new Error("Company ownership has changed since this invitation was issued");
     await sql`update company_ownership_transfers set status = 'accepted', accepted_at = now() where id = ${data.transferId}`;
     await sql`insert into audit_logs (id, company_id, actor_id, action, target)
       values (${nid("aud")}, ${transfer.company_id}, ${session.userId}, 'company.ownership_accepted', ${session.email})`;
