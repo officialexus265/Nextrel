@@ -39,10 +39,6 @@ function PlatformLogin() {
     retry: false,
   });
 
-  if (isPending) {
-    return <div className="grid min-h-dvh place-items-center bg-bg text-muted">Loading…</div>;
-  }
-
   useEffect(() => {
     if (!user || sessionQuery.isPending || denied || signOutStarted.current) return;
     if (sessionQuery.isError || (sessionQuery.data && sessionQuery.data.realRole !== "super_admin")) {
@@ -50,6 +46,10 @@ function PlatformLogin() {
       void authClient.signOut().catch(() => undefined).finally(() => setDenied(true));
     }
   }, [user, sessionQuery.isPending, sessionQuery.isError, sessionQuery.data, denied]);
+
+  if (isPending) {
+    return <div className="grid min-h-dvh place-items-center bg-bg text-muted">Loading…</div>;
+  }
 
   if (user && !denied) {
     if (sessionQuery.isPending) return <div className="grid min-h-dvh place-items-center bg-bg text-muted">Verifying access…</div>;
