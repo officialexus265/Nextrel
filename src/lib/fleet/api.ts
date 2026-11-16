@@ -1040,6 +1040,7 @@ export const createCompany = createServerFn({ method: "POST" })
     await sql`insert into audit_logs (id, company_id, actor_id, action, target) values (${nid("aud")}, ${id}, ${session.userId}, 'company.created', ${data.name})`;
     if (data.ownerEmail?.trim()) {
       const email = data.ownerEmail.trim().toLowerCase();
+      if (session.email?.toLowerCase() === email) throw new Error("The initial company owner must be a different account");
       const transferId = nid("own");
       await sql`insert into company_ownership_transfers (id, company_id, from_owner_user_id, to_email, created_by, status, expires_at)
         values (${transferId}, ${id}, null, ${email}, ${session.userId}, 'pending', now() + interval '14 days')`;
@@ -2471,6 +2472,7 @@ export const createOwnershipTransfer = createServerFn({ method: "POST" })
     if (session.realRole !== "super_admin" && company.owner_user_id !== session.userId) throw new Error("Only the System Owner or current Company Owner can transfer ownership");
     const email = data.email.trim().toLowerCase();
     if (session.email?.toLowerCase() === email) throw new Error("The new owner must be a different account");
+    await sql`update company_ownership_transfers set status = 'expired' where company_id = ${data.companyId} and status = 'pending' and expires_at <= now()`;
     const existing = (await sql<{ id: string }>`select id from company_ownership_transfers where company_id = ${data.companyId} and status = 'pending' limit 1`)[0];
     if (existing) throw new Error("This company already has a pending ownership invitation");
     const id = nid("own");
