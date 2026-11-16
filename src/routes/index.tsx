@@ -65,7 +65,7 @@ function Home() {
           <span className="text-sm font-semibold tracking-[0.22em]">KESTREL</span>
         </div>
         <Button asChild size="sm" variant="secondary">
-          <Link to="/login" search={{}}>Sign in</Link>
+          <Link to="/login" search={{ portal: undefined }}>Sign in</Link>
         </Button>
       </header>
 
@@ -78,7 +78,7 @@ function Home() {
 
         <div className="mt-10 flex flex-wrap items-center gap-4">
           <Button asChild size="lg" className="h-12 px-7 text-sm tracking-wide">
-            <Link to="/login" search={{}}>
+            <Link to="/login" search={{ portal: undefined }}>
               Enter console
               <ArrowRight className="ml-1.5 size-4" />
             </Link>
